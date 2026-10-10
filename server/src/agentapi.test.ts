@@ -63,6 +63,13 @@ test('an agent raises a task with a file, lists its project\'s, and marks one do
   const task = tasks.list()[0];
   assert.deepEqual([task.projectId, task.agentId, task.by, task.files.map((f) => f.name)], ['p1', 'a1', 'agent', ['ci.log']]);
   assert.match(await text(alice, 'list_tasks'), /Fix CI.*\(1 file\)/s);
+  // An agent keeps its project's task true: only what it names changes, and files can be added.
+  assert.match(await text(alice, 'update_task', { id: task.id, description: 'It fails at night, after the backup.', state: 'working', files: ['logs/ci.log', 'missing.log'] }), /Updated task.*missing\.log/s);
+  const edited = tasks.get(task.id)!;
+  assert.deepEqual([edited.title, edited.description, edited.state, edited.projectId, edited.agentId], ['Fix CI', 'It fails at night, after the backup.', 'working', 'p1', 'a1']);
+  await assert.rejects(call(bob, 'update_task', { id: task.id, title: 'Mine now' }, deps), /no such task/);
+  await assert.rejects(call(alice, 'update_task', { id: task.id, state: 'maybe' }, deps), /open, working or done/);
+  await assert.rejects(call(alice, 'update_task', { id: task.id, title: '' }, deps), /title/);
   assert.match(await text(bob, 'list_tasks'), /No open tasks/);
   const file = (await call(alice, 'task_file', { task: task.id, file: 'ci.log' }, deps)) as { name: string; base64: string };
   assert.deepEqual([file.name, Buffer.from(file.base64, 'base64').toString()], ['ci.log', 'boom']);
@@ -113,7 +120,7 @@ test('the server answers only a project\'s own token, and the tools reach it', a
     callTool(6, 'get_task_file', { task: task.id, file: 'notes.txt', to: '../outside.txt' }),
   );
   assert.equal(init.result.serverInfo.name, 'toto-node');
-  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['recall', 'remember', 'forget', 'raise_task', 'list_tasks', 'done_task', 'get_task_file']);
+  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['recall', 'remember', 'forget', 'raise_task', 'update_task', 'list_tasks', 'done_task', 'get_task_file']);
   assert.match(saved.result.content[0].text, /Remembered as/);
   assert.match(listed.result.content[0].text, /With a file/);
   assert.match(got.result.content[0].text, /Saved to .*inbox\/notes\.txt/);

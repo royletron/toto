@@ -32,6 +32,21 @@ export type Deps = {
 const text = (t: string) => ({ text: t });
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/** Attaches files from an agent's project to a task. Says, in a sentence, which could not be. */
+async function attach(taskId: string, who: Who, files: unknown, deps: Deps): Promise<string> {
+  const paths = Array.isArray(files) ? files.filter((p: unknown): p is string => typeof p === 'string').slice(0, 10) : [];
+  const missed: string[] = [];
+  for (const { path, bytes } of paths.length ? await deps.readFiles(who, paths) : []) {
+    try {
+      if (!bytes) throw new Error('unreadable');
+      deps.tasks.addFile(taskId, bytes, path);
+    } catch {
+      missed.push(path);
+    }
+  }
+  return missed.length ? ` These files could not be attached (missing, empty, or over ${MAX_FILE / 1024 / 1024} MB, or the task has all it can hold): ${missed.join(', ')}.` : '';
+}
+
 /** What one tool call does. Throws a plain sentence for what cannot be done. */
 export async function call(who: Who, route: string, args: any, deps: Deps): Promise<object> {
   const { memories, tasks } = deps;
@@ -73,18 +88,17 @@ export async function call(who: Who, route: string, args: any, deps: Deps): Prom
     }
     case 'raise_task': {
       const task = tasks.create({ title: args?.title, description: args?.description ?? '', projectId: who.projectId, agentId: who.agentId }, 'agent');
-      const missed: string[] = [];
-      const paths = Array.isArray(args?.files) ? args.files.filter((p: unknown): p is string => typeof p === 'string').slice(0, 10) : [];
-      for (const { path, bytes } of paths.length ? await deps.readFiles(who, paths) : []) {
-        try {
-          if (!bytes) throw new Error('unreadable');
-          tasks.addFile(task.id, bytes, path);
-        } catch {
-          missed.push(path);
-        }
-      }
+      const missed = await attach(task.id, who, args?.files, deps);
       deps.changed('tasks');
-      return text(`Raised task ${task.id}.${missed.length ? ` These files could not be attached (missing, empty, or over ${MAX_FILE / 1024 / 1024} MB): ${missed.join(', ')}.` : ''}`);
+      return text(`Raised task ${task.id}.${missed}`);
+    }
+    case 'update_task': {
+      const was = tasks.get(args?.id);
+      if (!was || was.projectId !== who.projectId) throw new Error('There is no such task in this project.');
+      const task = tasks.edit(was.id, { title: args?.title, description: args?.description, state: args?.state });
+      const missed = await attach(task.id, who, args?.files, deps);
+      deps.changed('tasks');
+      return text(`Updated task ${task.id}.${missed}`);
     }
     case 'list_tasks': {
       const open = tasks.list().filter((t) => t.projectId === who.projectId && t.state !== 'done');

@@ -28,6 +28,11 @@ export const TOOLS = [
     description: 'Put something on the person\'s list of things to do for later, when it is not for you to do now: a follow-up, a bug you noticed, an idea. Say enough that it makes sense on its own. files are paths inside the project to attach (up to 10 MB each).',
     inputSchema: { type: 'object', required: ['title'], properties: { title: str('A short title.'), description: str('What and why.'), files: { type: 'array', items: { type: 'string' } } } },
   },
+  {
+    name: 'update_task',
+    description: 'Change a task of this project: its title, description or state (open, working or done), and attach more files. Only what you give changes. Use it to keep a task true as you work on it, such as adding what you found.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: str('The task id.'), title: str('A new title.'), description: str('A new description, replacing the old.'), state: { type: 'string', enum: ['open', 'working', 'done'] }, files: { type: 'array', items: { type: 'string' } } } },
+  },
   { name: 'list_tasks', description: 'The tasks still open in this project, with their ids.', inputSchema: { type: 'object', properties: {} } },
   { name: 'done_task', description: 'Mark a task of this project done, once the work on it is finished.', inputSchema: { type: 'object', required: ['id'], properties: { id: str('The task id.') } } },
   {
@@ -54,7 +59,7 @@ export async function run(name, args, cwd = process.cwd()) {
     const file = await api('task_file', { task: args?.task, file: args?.file });
     return `Saved to ${save(file.name, file.base64, args?.to, cwd)}.`;
   }
-  const routes = { recall: 'recall', remember: 'remember', forget: 'forget', raise_task: 'raise_task', list_tasks: 'list_tasks', done_task: 'done_task' };
+  const routes = { recall: 'recall', remember: 'remember', forget: 'forget', raise_task: 'raise_task', update_task: 'update_task', list_tasks: 'list_tasks', done_task: 'done_task' };
   if (!routes[name]) throw new Error('There is no such tool.');
   return (await api(routes[name], args ?? {})).text;
 }

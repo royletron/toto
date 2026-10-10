@@ -19,3 +19,4 @@ This Toto keeps notes for its agents and a list of things to do. Both are on the
 
 - **`raise_task`** when you notice something that is not for you to do right now: a follow-up, a bug outside what you were asked, an idea. Write it so it makes sense by itself, and attach a file if it helps (a log, a screenshot).
 - **`list_tasks`** shows what is open in this project. When you are given a task, use `get_task_file` for any file attached to it, and `done_task` when the work is finished.
+- **`update_task`** keeps a task true as you work: add what you found to its description, change its state to working, attach a log. It changes only what you give it. You cannot delete a task or move it to another project.

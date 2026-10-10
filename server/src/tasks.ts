@@ -72,6 +72,12 @@ export function openTasks(file: string, filesRoot: string) {
       return task;
     },
 
+    /** Changes some of a task and leaves the rest as it was. */
+    edit(id: string, patch: { title?: unknown; description?: unknown; state?: unknown }): Task {
+      const was = need(id);
+      return this.update(id, { title: patch.title ?? was.title, description: patch.description ?? was.description, projectId: was.projectId, agentId: was.agentId, state: patch.state ?? was.state });
+    },
+
     /** Marks a task done, working or open without touching anything else. */
     setState(id: string, state: TaskState): Task {
       const task = need(id);
