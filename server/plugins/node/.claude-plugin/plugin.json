@@ -1,0 +1,6 @@
+{
+  "name": "toto-node",
+  "description": "Memory and a task list for Toto's agents, kept on the Toto: what to remember next time, and what to leave for later.",
+  "version": "1.0.0",
+  "author": { "name": "Toto" }
+}

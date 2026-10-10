@@ -55,6 +55,14 @@ export function readFile(agentId: unknown, id: unknown, root = dataDir): Buffer 
   return existsSync(file) ? readFileSync(file) : undefined;
 }
 
+/** Throws away one kept file. */
+export function dropFile(agentId: unknown, id: unknown, root = dataDir) {
+  if (isAgent(agentId) && isImage(id)) rmSync(join(filesIn(agentId, root), id), { force: true });
+}
+
+/** Throws away every file kept for an agent, or for a task (which are kept the same way, apart). */
+export const dropFiles = (agentId: string, root = dataDir) => isAgent(agentId) && rmSync(filesIn(agentId, root), { recursive: true, force: true });
+
 export const dropImages = (agentId: string, root = dataDir) => {
   if (!isAgent(agentId)) return;
   rmSync(folder(agentId, root), { recursive: true, force: true });

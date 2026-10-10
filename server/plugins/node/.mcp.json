@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "node": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/toto-node.mjs"]
+    }
+  }
+}

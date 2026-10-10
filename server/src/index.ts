@@ -12,7 +12,10 @@ import { type Screen, killTerminal, openTerminal, watchTerminal } from './termin
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
+import { apiToken, sameToken, startAgentApi } from './agentapi.ts';
 import { describeFlags, setFlag } from './flags.ts';
+import { openMemories } from './memory.ts';
+import { openTasks } from './tasks.ts';
 import { readProgress } from './progress.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
@@ -81,6 +84,16 @@ const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents
 };
 const logFile = (agentId: string) => join(logDir, `${agentId}.jsonl`);
 
+// --- What agents are asked to remember, and what is left for later. Agents reach them through a small
+// server on the loopback address (see agentapi.ts); a project's agents carry its token, which is
+// derived from this device's and so is not stored.
+const memories = openMemories(join(dataDir, 'memories.json'));
+const tasks = openTasks(join(dataDir, 'tasks.json'), join(dataDir, 'task-files'));
+const API_PORT = Number(process.env.TOTO_API_PORT ?? 7861);
+const apiUrl = `http://127.0.0.1:${API_PORT}`;
+/** What a project's agents are given to call this device with. */
+const projectEnv = (p: { id: string }) => ({ TOTO_API_URL: apiUrl, TOTO_API_TOKEN: apiToken(token, p.id) });
+
 // --- How agents are signed in to Claude. Set from the app and kept in a private file; whatever
 // was put in the service's environment by hand is the fallback. Either way it reaches agents
 // through this process's environment (see installEnv).
@@ -115,7 +128,7 @@ const thinking = new Set<string>();
 const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen } & ReturnType<typeof watchTerminal>>();
 const sshKey = await deviceKey();
 // Credentials change by editing the server's environment and restarting, so this is where projects catch up.
-await Promise.all(state.projects.map((p) => installEnv(p.user).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
+await Promise.all(state.projects.map((p) => installEnv(p.user, projectEnv(p)).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
 // Firewall rules do not survive a reboot, so every start puts each project back where it should be.
 // ponytail: if something else wipes the rules while we run, they stay gone until the next start.
 for (const p of state.projects) {
@@ -276,6 +289,26 @@ function sayNext(agent: AgentRecord) {
   return true;
 }
 
+const tellMemories = () => broadcast({ type: 'memories', items: memories.list() });
+const tellTasks = () => broadcast({ type: 'tasks', items: tasks.list() });
+
+/** Gives an agent a task to work on: said now, or when its turn ends if it is partway through one. */
+function giveTask(agent: AgentRecord, task: ReturnType<typeof tasks.list>[number]) {
+  const text = [
+    `A task from your list: ${task.title}`,
+    task.description,
+    task.files.length ? `Files are attached to it: ${task.files.map((f) => f.name).join(', ')}. Use get_task_file with task ${task.id} to save one into the project.` : '',
+    `This is task ${task.id}. Call done_task when you have finished it.`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  if (!thinking.has(agent.id)) return deliver(agent, text, []);
+  const waiting = queues.get(agent.id) ?? [];
+  if (waiting.length >= MAX_QUEUED) throw new Error('That agent has as many messages waiting as can wait. Let it catch up first.');
+  queues.set(agent.id, [...waiting, { text, images: [] }]);
+  tellQueue(agent.id);
+}
+
 const emit = (agent: AgentRecord, event: AgentEvent) => {
   // Whatever was being written comes before whatever happened next.
   flushDeltas(agent.id);
@@ -324,6 +357,7 @@ const start = (agent: AgentRecord) => {
       chains.set(agent.id, (chains.get(agent.id) ?? Promise.resolve()).then(() => withFiles(agent, project.user, e)).then((out) => emit(agent, out)).catch(console.error));
     },
     keepImage: (mime, data) => saveImage(agent.id, mime, data),
+    agent: { id: agent.id, apiUrl, apiToken: apiToken(token, project.id) },
     onDelta: (text) => delta(agent, text),
     onSession: (id) => {
       agent.sessionId = id;
@@ -375,7 +409,7 @@ async function signIn(credential: Credential | undefined) {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
   }
-  await Promise.all(state.projects.map((p) => installEnv(p.user).catch(() => {})));
+  await Promise.all(state.projects.map((p) => installEnv(p.user, projectEnv(p)).catch(() => {})));
   // Agents already running hold the old sign-in; stopping them means their next turn starts with the new one.
   for (const proc of running.values()) proc.stop();
   commit();
@@ -384,7 +418,7 @@ async function signIn(credential: Credential | undefined) {
 /** After a plugin or its sign-in changes: agents get the new variables, and ones not mid-turn start over with the new plugins. */
 async function refreshAgents() {
   plugged();
-  await Promise.all(state.projects.map((p) => installEnv(p.user).catch(() => {})));
+  await Promise.all(state.projects.map((p) => installEnv(p.user, projectEnv(p)).catch(() => {})));
   for (const [id, proc] of running) if (!thinking.has(id)) proc.stop();
   broadcast(snapshot());
 }
@@ -426,6 +460,8 @@ async function handle(msg: ClientMessage, ws: Client) {
       }
       send(ws, snapshot());
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
+      send(ws, { type: 'memories', items: memories.list() });
+      send(ws, { type: 'tasks', items: tasks.list() });
       for (const [agentId, items] of queues) if (items.length) send(ws, { type: 'queue', agentId, items: items.map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
       return send(ws, { type: 'synced' });
     case 'ping':
@@ -465,7 +501,7 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();
-      const { user, dir } = await createProject(id, msg.repo.trim(), state.identity);
+      const { user, dir } = await createProject(id, msg.repo.trim(), state.identity, projectEnv({ id }));
       // A new project user starts off the local network; toto-priv saw to that when it made the user.
       state.projects.push({ id, name: msg.name.trim(), repo: msg.repo.trim(), user, dir, lan: user ? false : undefined });
       return commit();
@@ -490,6 +526,10 @@ async function handle(msg: ClientMessage, ws: Client) {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project) return;
       // Out of state first, so nothing new can start in it while its files go.
+      memories.forget([project.id, ...state.agents.filter((a) => a.projectId === project.id).map((a) => a.id)]);
+      tasks.removeProject(project.id);
+      tellMemories();
+      tellTasks();
       state.agents.filter((a) => a.projectId === project.id).forEach(forget);
       state.agents = state.agents.filter((a) => a.projectId !== project.id);
       state.projects = state.projects.filter((p) => p !== project);
@@ -498,6 +538,10 @@ async function handle(msg: ClientMessage, ws: Client) {
     }
     case 'delete_agent': {
       if (!agent) return;
+      memories.forget([agent.id]);
+      tasks.unassign(agent.id);
+      tellMemories();
+      tellTasks();
       forget(agent);
       state.agents = state.agents.filter((a) => a !== agent);
       commit();
@@ -643,6 +687,61 @@ async function handle(msg: ClientMessage, ws: Client) {
         void refreshAgents();
       });
       return send(ws, { type: 'plugin_login', name, ...shown });
+    }
+    case 'memory_save': {
+      // Where it is kept has to be somewhere there is: a project or an agent that exists.
+      const scoped = msg.layer === 'project' ? state.projects.some((p) => p.id === msg.scope) : msg.layer === 'agent' ? state.agents.some((a) => a.id === msg.scope) : true;
+      if (!scoped) throw new Error('That project or agent is not there any more.');
+      memories.save(msg, { by: 'you' }, typeof msg.id === 'string' ? msg.id : undefined);
+      return tellMemories();
+    }
+    case 'memory_accept':
+      memories.accept(msg.id);
+      return tellMemories();
+    case 'memory_delete':
+      memories.remove(msg.id, { by: 'you' });
+      return tellMemories();
+    case 'task_save': {
+      const project = state.projects.find((p) => p.id === msg.projectId);
+      const worker = msg.agentId ? state.agents.find((a) => a.id === msg.agentId) : undefined;
+      if (!project) throw new Error('That project is not there any more.');
+      if (msg.agentId && worker?.projectId !== project.id) throw new Error('That agent does not work in that project.');
+      const input = { title: msg.title, description: msg.description, projectId: project.id, agentId: worker?.id, state: msg.state };
+      if (typeof msg.id === 'string') tasks.update(msg.id, input);
+      else tasks.create(input, 'you');
+      return tellTasks();
+    }
+    case 'task_delete':
+      tasks.remove(msg.id);
+      return tellTasks();
+    case 'task_attach': {
+      const pieces = ws.uploads?.get(msg.upload);
+      ws.uploads?.delete(msg.upload);
+      if (!pieces || typeof msg.name !== 'string') throw new Error('That file did not arrive whole. Try again.');
+      const data = pieces.join('');
+      if (data.length > (MAX_FILE * 4) / 3 + 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error('That file is larger than 10 MB.');
+      tasks.addFile(msg.id, Buffer.from(data, 'base64'), msg.name);
+      return tellTasks();
+    }
+    case 'task_detach':
+      tasks.removeFile(msg.id, msg.fileId);
+      return tellTasks();
+    case 'task_file': {
+      const bytes = tasks.readFile(msg.taskId, msg.id);
+      if (!bytes) throw new Error('That file is no longer on this Toto.');
+      const of = Math.ceil(bytes.length / IMAGE_PIECE);
+      for (let at = 0; at < of; at++)
+        send(ws, { type: 'file', agentId: msg.taskId, id: msg.id, at, of, data: bytes.subarray(at * IMAGE_PIECE, (at + 1) * IMAGE_PIECE).toString('base64') });
+      return;
+    }
+    case 'task_push': {
+      const task = tasks.get(msg.id);
+      const worker = state.agents.find((a) => a.id === msg.agentId);
+      if (!task) throw new Error('That task is not there any more.');
+      if (worker?.harness !== 'claude') throw new Error('A task can be given to a chat agent. Pick one.');
+      const pushed = tasks.update(task.id, { title: task.title, description: task.description, projectId: worker.projectId, agentId: worker.id, state: 'working' });
+      tellTasks();
+      return giveTask(worker, pushed);
     }
     case 'set_flag':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can change its settings.');
@@ -955,6 +1054,24 @@ wss.on('listening', () => {
 // Look for a release now and once a day, so a Toto the relay never reaches still finds out.
 void checkForUpdate();
 void checkForPlugins();
+void startAgentApi(API_PORT, {
+  memories,
+  tasks,
+  who: (presented, agentId) => {
+    const agent = state.agents.find((a) => a.id === agentId);
+    return agent && sameToken(presented, apiToken(token, agent.projectId)) ? { agentId: agent.id, projectId: agent.projectId } : undefined;
+  },
+  readFiles: async (who, paths) => {
+    const agent = state.agents.find((a) => a.id === who.agentId);
+    const project = state.projects.find((p) => p.id === who.projectId);
+    if (!agent || !project) return paths.map((path) => ({ path }));
+    return Promise.all(paths.map(async (path) => {
+      const bytes = await readAs(project.user, agent.cwd, resolve(agent.cwd, path), MAX_FILE);
+      return { path, bytes: bytes && bytes.length <= MAX_FILE ? bytes : undefined };
+    }));
+  },
+  changed: (what) => (what === 'memories' ? tellMemories() : tellTasks()),
+});
 // An update that was under way when this server started is still going.
 if (readProgress().active) {
   updating = readProgress().shown?.task === 'update';

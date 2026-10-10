@@ -100,6 +100,40 @@ export type Plugin = {
   paste?: { url: string; help: string };
 };
 
+/**
+ * Something to remember, kept on the Toto at one of three layers: for one agent, for every agent
+ * in a project (`scope` is the project's id, or the agent's for the first layer), or for all of
+ * them. `by` says who wrote it. A node-level memory an agent wrote is `pending` until accepted.
+ */
+export type MemoryLayer = 'node' | 'project' | 'agent';
+export type Memory = {
+  id: string;
+  layer: MemoryLayer;
+  scope?: string;
+  title: string;
+  body: string;
+  by: 'you' | 'agent';
+  author?: string;
+  created: number;
+  updated: number;
+  pending?: boolean;
+};
+
+/** Something to be done, kept on the Toto: raised by an agent or by hand, and worked on by one. */
+export type TaskState = 'open' | 'working' | 'done';
+export type Task = {
+  id: string;
+  title: string;
+  description: string;
+  projectId: string;
+  agentId?: string;
+  by: 'you' | 'agent';
+  created: number;
+  updated: number;
+  state: TaskState;
+  files: FileRef[];
+};
+
 /** A switch for finding things out, on a Toto. */
 export type Flag = { name: string; label: string; about: string; on: boolean };
 
@@ -145,6 +179,10 @@ export type ServerMessage =
   | { type: 'joined'; secret: string }
   // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
   | { type: 'claude_login'; url: string }
+  // Everything this Toto has been asked to remember, and every task, sent on `sync` and whenever
+  // either changes.
+  | { type: 'memories'; items: Memory[] }
+  | { type: 'tasks'; items: Task[] }
   // How a job on the device is going, sent as it changes, so the whole `state` need not be (and so an
   // app that does not know this message is not told its own request has been answered). Absent: no job.
   | { type: 'progress'; progress?: Progress }
@@ -193,6 +231,20 @@ export type ClientMessage =
   | { type: 'join' }
   // Owner only: add a plugin to this device (or bring it up to date), take it away, and sign in
   // to it or out of it. Signing in is shared by every project on the device.
+  // Memories: `id` edits one (a new layer or scope moves it), without it makes one. `accept` takes
+  // an agent's suggestion for the node as it is.
+  | { type: 'memory_save'; id?: string; layer: MemoryLayer; scope?: string; title: string; body: string }
+  | { type: 'memory_accept'; id: string }
+  | { type: 'memory_delete'; id: string }
+  // Tasks: `id` edits one (a new project or agent moves it), without it makes one. Files come from
+  // `upload` pieces, as pictures do; `task_file` asks for one back, as `file` messages.
+  | { type: 'task_save'; id?: string; title: string; description: string; projectId: string; agentId?: string; state: TaskState }
+  | { type: 'task_delete'; id: string }
+  | { type: 'task_attach'; id: string; upload: string; name: string }
+  | { type: 'task_detach'; id: string; fileId: string }
+  | { type: 'task_file'; taskId: string; id: string }
+  // Gives a task to an agent to work on now: it is told, and the task becomes `working`.
+  | { type: 'task_push'; id: string; agentId: string }
   // Owner only: turn a debugging switch (see `flags` in `state`) on or off.
   | { type: 'set_flag'; name: string; on: boolean }
   | { type: 'plugin_install'; name: string }

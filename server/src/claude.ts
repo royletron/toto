@@ -33,6 +33,10 @@ export const pluginArgs = (dir = PLUGINS): string[] => {
 const FILES_PLUGIN = fileURLToPath(new URL('../plugins/files', import.meta.url));
 export const filesArgs = (plugin = FILES_PLUGIN): string[] => (existsSync(plugin) ? ['--plugin-dir', plugin] : []);
 
+// Memory and a task list for agents (see plugins/node), shipped with the server like the others.
+const NODE_PLUGIN = fileURLToPath(new URL('../plugins/node', import.meta.url));
+export const nodeArgs = (plugin = NODE_PLUGIN): string[] => (existsSync(plugin) ? ['--plugin-dir', plugin] : []);
+
 /** Puts a picture away and gives back the reference to it; undefined if it is not one worth keeping. */
 type Keep = (mime: unknown, base64: unknown) => ImageRef | undefined;
 
@@ -98,6 +102,8 @@ type Options = {
   onEvent: (e: AgentEvent) => void;
   /** Where pictures the agent produces are put. */
   keepImage?: Keep;
+  /** What the memory and task tools need to know of this agent: who it is, and where and how to call the Toto. */
+  agent?: { id: string; apiUrl: string; apiToken: string };
   /** Words as Claude writes them, before the whole message arrives. */
   onDelta?: (text: string) => void;
   /** The conversation's id, or undefined when the one asked for could not be resumed. */
@@ -107,8 +113,9 @@ type Options = {
 };
 
 /** Starts a long-lived Claude Code process. */
-export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onDelta, onSession, onExit }: Options) {
-  const [file, args, opts] = command(user, cwd, process.env.TOTO_CLAUDE_BIN ?? 'claude', [
+export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onDelta, agent, onSession, onExit }: Options) {
+  const bin = process.env.TOTO_CLAUDE_BIN ?? 'claude';
+  const claudeArgs = [
     '-p',
     '--input-format', 'stream-json',
     '--output-format', 'stream-json',
@@ -120,10 +127,16 @@ export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onDelta,
     '--permission-prompt-tool', 'stdio',
     ...browserArgs(),
     ...filesArgs(),
+    ...nodeArgs(),
     ...pluginArgs(),
     ...(sessionId ? ['--resume', sessionId] : []),
-  ]);
-  const child = spawn(file, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] });
+  ];
+  // Which agent this is is no secret, so it rides on the command. The address and token are a
+  // project's, and reach it through the private file in its home (see installEnv); where there are
+  // no project users they go in the process's environment instead.
+  const [file, args, opts] = agent ? command(user, cwd, 'env', [`TOTO_AGENT_ID=${agent.id}`, bin, ...claudeArgs]) : command(user, cwd, bin, claudeArgs);
+  const env = agent && !user ? { ...process.env, TOTO_AGENT_ID: agent.id, TOTO_API_URL: agent.apiUrl, TOTO_API_TOKEN: agent.apiToken } : undefined;
+  const child = spawn(file, args, { ...opts, ...(env ? { env } : null), stdio: ['pipe', 'pipe', 'pipe'] });
   const write = (msg: unknown) => child.stdin.write(JSON.stringify(msg) + '\n');
   const respond = (requestId: string, body: object) =>
     write({ type: 'control_response', response: { request_id: requestId, ...body } });

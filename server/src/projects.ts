@@ -21,9 +21,9 @@ const INSTALL_ENV = `umask 077 && cat > "$HOME/.toto-env"`;
 const WITH_ENV = `[ -r "$HOME/.toto-env" ] && . "$HOME/.toto-env"; exec "$@"`;
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 
-/** The credentials in `env` as a file a POSIX shell can source. */
-export const envFile = (env: Record<string, string | undefined>) =>
-  [...secretNames].filter((name) => env[name]).map((name) => `export ${name}=${quote(env[name]!)}\n`).join('');
+/** The credentials in `env`, and anything else a project's agents are to have (`extra`), as a file a POSIX shell can source. */
+export const envFile = (env: Record<string, string | undefined>, extra: Record<string, string> = {}) =>
+  [...[...secretNames].filter((name) => env[name]).map((name) => [name, env[name]!]), ...Object.entries(extra)].map(([name, value]) => `export ${name}=${quote(value)}\n`).join('');
 
 /**
  * The argv that runs `cmd` in `cwd` as a project's Linux user. The server cannot enter a project's
@@ -82,9 +82,9 @@ const SSH_REPO = /^(ssh:\/\/)?[A-Za-z0-9][\w.-]*@[A-Za-z0-9][\w.-]*[:/][\w.~/-]+
 type ProjectDir = { user?: string; dir: string };
 
 /** Gives a project user the server's current credentials. A no-op in development, where agents inherit them. */
-export async function installEnv(user: string | undefined) {
+export async function installEnv(user: string | undefined, extra: Record<string, string> = {}) {
   if (!user) return;
-  await run(user, `/home/${user}`, 'sh', ['-c', INSTALL_ENV], envFile(process.env));
+  await run(user, `/home/${user}`, 'sh', ['-c', INSTALL_ENV], envFile(process.env, extra));
 }
 
 /**
@@ -98,7 +98,7 @@ export async function applyIdentity({ user, dir }: ProjectDir, { name, email }: 
 }
 
 /** Creates the project's Linux user (when isolating) and clones `repo` into it. */
-export async function createProject(id: string, repo: string, identity: Identity): Promise<ProjectDir> {
+export async function createProject(id: string, repo: string, identity: Identity, env: Record<string, string> = {}): Promise<ProjectDir> {
   // https or ssh only: rules out local paths and git's command-running transports.
   if (!/^https:\/\/\S+$/.test(repo) && !SSH_REPO.test(repo))
     throw new Error('The repository must look like git@github.com:owner/repo.git or https://…');
@@ -108,7 +108,7 @@ export async function createProject(id: string, repo: string, identity: Identity
   else mkdirSync(home, { recursive: true });
   try {
     if (user) await run(user, home, 'sh', ['-c', INSTALL_KEY], readFileSync(keyFile, 'utf8'));
-    await installEnv(user);
+    await installEnv(user, env);
     await run(user, home, 'git', ['clone', '--', repo, 'repo']);
     await applyIdentity({ user, dir: join(home, 'repo') }, identity);
   } catch (err) {
