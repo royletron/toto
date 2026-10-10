@@ -7,6 +7,7 @@ import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
+import { Avatar } from '../../avatar';
 import { Files } from '../../files';
 import { Attachments, Pictures, choosePictures, type Attached } from '../../pictures';
 import { Btn, Empty, Header, Loading, Reaching, Screen, Spinner, Txt, Waiting, styles as ui } from '../../ui';
@@ -478,6 +479,7 @@ export default function AgentScreen() {
       <Header
         parent={project?.name ?? 'toto'}
         title={agent?.name ?? (loaded ? 'gone' : '…')}
+        leading={agent ? <Avatar seed={agent.id} size={26} /> : undefined}
         right={
           <>
             {agent?.harness === 'claude' && (

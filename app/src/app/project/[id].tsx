@@ -2,8 +2,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Activity, type Agent } from '../../connection';
+import { Avatar } from '../../avatar';
 import { Face } from '../../face';
-import { moodOf } from '../../moods';
 import { Btn, Check, Empty, Field, Header, Reaching, Screen, StatusLine, Txt, Waiting, styles } from '../../ui';
 
 const STATE: Record<Activity, { glyph: string; tone: 'ghost' | 'signal' | 'amber' | 'raspberry'; label: string }> = {
@@ -20,8 +20,8 @@ function AgentRow({ agent }: { agent: Agent }) {
   const terminal = agent.harness === 'terminal';
   return (
     <Pressable onPress={() => router.push({ pathname: '/agent/[id]', params: { id: agent.id } })} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center', gap: 12 }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${agent.name}, ${terminal ? 'terminal' : state.label}`}>
-        {/* A fixed-width column, so names line up like a process list. A terminal is you, not Toto, so it gets a prompt. */}
-        <View style={styles.faceCol}>{terminal ? <Txt tone="ghost" weight="bold">  $</Txt> : <Face mood={moodOf(activity[agent.id] ?? 'idle')} size={13} />}</View>
+        {/* A fixed-width column, so names line up like a process list. */}
+        <View style={styles.faceCol}><Avatar seed={agent.id} size={34} state={terminal ? undefined : activity[agent.id] ?? 'idle'} /></View>
         <View style={{ flex: 1 }}>
           <Txt weight="bold" numberOfLines={1}>{agent.name}</Txt>
           <Txt tone="ghost" small>{agent.worktree ? 'own branch' : 'main checkout'}</Txt>

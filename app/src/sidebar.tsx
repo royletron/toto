@@ -2,8 +2,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useConnection, type Agent } from './connection';
-import { Face } from './face';
-import { moodOf } from './moods';
+import { Avatar } from './avatar';
 import { color, gutter, tap } from './theme';
 import { Btn, StatusLine, Txt, styles as ui } from './ui';
 
@@ -24,8 +23,11 @@ export function Sidebar() {
     const terminal = agent.harness === 'terminal';
     return (
       <Pressable key={agent.id} onPress={() => router.navigate({ pathname: '/agent/[id]', params: { id: agent.id } })} accessibilityRole="link" accessibilityState={{ selected: here }} accessibilityLabel={`${agent.name}, ${terminal ? 'terminal' : state}`} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [local.agent, (here || hovered) && local.lit, here && local.here, pressed && { opacity: 0.6 }]}>
-        <View style={{ width: 44 }}>{terminal ? <Txt tone="ghost" weight="bold">  $</Txt> : <Face mood={moodOf(state)} size={12} />}</View>
-        <Txt weight={here ? 'bold' : 'regular'} numberOfLines={1} style={{ flex: 1 }}>{agent.name}</Txt>
+        <Avatar seed={agent.id} size={26} state={terminal ? undefined : state} />
+        <Txt weight={here ? 'bold' : 'regular'} numberOfLines={1} style={{ flex: 1 }}>
+          {agent.name}
+          {terminal && <Txt tone="ghost">{'  $'}</Txt>}
+        </Txt>
         {!terminal && state === 'waiting' && <Txt tone="amber" weight="bold" small>waiting</Txt>}
         {!terminal && state === 'working' && <Txt tone="signal" small>working</Txt>}
         {!terminal && state === 'failed' && <Txt tone="raspberry" small>stopped</Txt>}
