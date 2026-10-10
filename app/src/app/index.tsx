@@ -34,6 +34,27 @@ function ProjectRow({ project }: { project: Project }) {
   );
 }
 
+/** The two lists that cut across projects: what is left for later, and what is remembered. */
+function Lists() {
+  const { tasks, memories, status, notes } = useConnection();
+  const router = useRouter();
+  if (status !== 'open' || !notes) return null;
+  const open = tasks.filter((t) => t.state !== 'done').length;
+  const suggested = memories.filter((m) => m.pending).length;
+  return (
+    <>
+      <Pressable onPress={() => router.push('/tasks')} style={styles.row} accessibilityRole="button">
+        <Txt weight="bold">Tasks</Txt>
+        <Txt tone="ghost" small>{open ? `${open} open` : 'Nothing open. Agents add things for later here.'}</Txt>
+      </Pressable>
+      <Pressable onPress={() => router.push('/memory')} style={styles.row} accessibilityRole="button">
+        <Txt weight="bold">Memory</Txt>
+        {suggested > 0 ? <Txt tone="amber" small>{suggested === 1 ? '1 suggestion waits for you' : `${suggested} suggestions wait for you`}</Txt> : <Txt tone="ghost" small>{memories.length ? `${memories.length} remembered` : 'What agents are asked to remember.'}</Txt>}
+      </Pressable>
+    </>
+  );
+}
+
 function AddProject() {
   const { request, busy, sshKey, status } = useConnection();
   const [open, setOpen] = useState(false);
@@ -115,7 +136,10 @@ export default function Projects() {
                 </View>
               </View>
             ) : (
-              <AddProject />
+              <>
+                <AddProject />
+                <Lists />
+              </>
             )
           }
         />

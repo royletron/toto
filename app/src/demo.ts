@@ -2,7 +2,7 @@
 // who review the app for a store, and anyone curious. It speaks the same messages a real one
 // does, so every screen is the real screen; only what is on the other end is made up.
 // Nothing here leaves the phone, and nothing is kept: it starts over each time it is opened.
-import type { Agent, AgentEvent, ClientMessage, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClientMessage, Memory, Project, ServerMessage, Task } from '../../protocol';
 
 /** The address that means "the demo", where a real Toto has ws://… */
 export const DEMO = 'demo:';
@@ -53,6 +53,18 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     ],
     a0000003: [],
   };
+  // What it remembers and what is left for later, with one suggestion waiting for you.
+  const now = Date.now();
+  let memories: Memory[] = [
+    { id: 'm0000001', layer: 'node', title: 'House style', body: 'Plain verbs, sentence case. Say what happened and what to do.', by: 'you', created: now - 9 * 86_400_000, updated: now - 9 * 86_400_000 },
+    { id: 'm0000002', layer: 'project', scope: 'd0000001', title: 'Running the tests', body: 'Use `npm test -- webhooks` for one folder. The whole suite takes four minutes.', by: 'agent', author: 'a0000001', created: now - 3 * 86_400_000, updated: now - 3 * 86_400_000 },
+    { id: 'm0000003', layer: 'agent', scope: 'a0000002', title: 'The README tone', body: 'Short sentences, no marketing words. Examples before explanation.', by: 'you', created: now - 86_400_000, updated: now - 86_400_000 },
+    { id: 'm0000004', layer: 'node', title: 'Log in UTC', body: 'Every timestamp this team logs is UTC, with the Z.', by: 'agent', author: 'a0000001', created: now - 3_600_000, updated: now - 3_600_000, pending: true },
+  ];
+  let tasks: Task[] = [
+    { id: 't0000001', title: 'A 429 should wait for Retry-After', description: 'The sender uses its own delay on a 429. It should wait as long as the Retry-After header says.', projectId: 'd0000001', agentId: 'a0000001', by: 'agent', created: now - 7_200_000, updated: now - 7_200_000, state: 'open', files: [] },
+    { id: 't0000002', title: 'Add the Retries section to the changelog', description: '', projectId: 'd0000001', agentId: 'a0000002', by: 'you', created: now - 86_400_000, updated: now - 3_600_000, state: 'working', files: [] },
+  ];
   // Agents partway through a turn, and what has been left waiting for each.
   // (The first agent starts with a question already open.)
   const working = new Set<string>(['a0000001']);
@@ -79,6 +91,8 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
       case 'sync':
         say(state());
         for (const [agentId, log] of Object.entries(logs)) for (const event of log) say({ type: 'event', agentId, event });
+        say({ type: 'memories', items: memories });
+        say({ type: 'tasks', items: tasks });
         return say({ type: 'synced' });
       case 'ping':
         return say({ type: 'pong', name });
@@ -119,6 +133,38 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
           return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] });
         }
         return ask(msg.agentId, msg.text);
+      case 'memory_save': {
+        const was = memories.find((m) => m.id === msg.id);
+        const made: Memory = { id: was?.id ?? id(), layer: msg.layer, ...(msg.layer === 'node' ? null : { scope: msg.scope }), title: msg.title.trim(), body: msg.body.trim(), by: was?.by ?? 'you', ...(was?.author ? { author: was.author } : null), created: was?.created ?? Date.now(), updated: Date.now() };
+        memories = was ? memories.map((m) => (m === was ? made : m)) : [...memories, made];
+        return say({ type: 'memories', items: memories });
+      }
+      case 'memory_accept':
+        memories = memories.map((m) => (m.id === msg.id ? { ...m, pending: undefined } : m));
+        return say({ type: 'memories', items: memories });
+      case 'memory_delete':
+        memories = memories.filter((m) => m.id !== msg.id);
+        return say({ type: 'memories', items: memories });
+      case 'task_save': {
+        const was = tasks.find((t) => t.id === msg.id);
+        const made: Task = { id: was?.id ?? id(), title: msg.title.trim(), description: msg.description.trim(), projectId: msg.projectId, ...(msg.agentId ? { agentId: msg.agentId } : null), by: was?.by ?? 'you', created: was?.created ?? Date.now(), updated: Date.now(), state: msg.state, files: was?.files ?? [] };
+        tasks = was ? tasks.map((t) => (t === was ? made : t)) : [...tasks, made];
+        return say({ type: 'tasks', items: tasks });
+      }
+      case 'task_delete':
+        tasks = tasks.filter((t) => t.id !== msg.id);
+        return say({ type: 'tasks', items: tasks });
+      case 'task_detach':
+        tasks = tasks.map((t) => (t.id === msg.id ? { ...t, files: t.files.filter((f) => f.id !== msg.fileId) } : t));
+        return say({ type: 'tasks', items: tasks });
+      case 'task_push': {
+        const task = tasks.find((t) => t.id === msg.id);
+        const worker = agents.find((a) => a.id === msg.agentId);
+        if (!task || !worker) return;
+        tasks = tasks.map((t) => (t === task ? { ...t, state: 'working', agentId: worker.id, projectId: worker.projectId, updated: Date.now() } : t));
+        say({ type: 'tasks', items: tasks });
+        return ask(worker.id, `A task from your list: ${task.title}`);
+      }
       case 'set_flag':
         flagOn = msg.on;
         return say(state());

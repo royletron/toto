@@ -7,17 +7,17 @@ import { Btn, Txt } from './ui';
 const size = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 /** Files an agent sent. One is fetched from the Toto only when asked for, and goes straight to the system's save and share sheet. */
-export function Files({ agentId, files }: { agentId: string; files: FileRef[] }) {
+export function Files({ agentId, files, task, onRemove }: { agentId: string; files: FileRef[]; /** `agentId` is a task's, and these are its files. */ task?: boolean; onRemove?: (file: FileRef) => void }) {
   return (
     <View style={{ gap: 8 }}>
       {files.map((file) => (
-        <FileRow key={file.id} agentId={agentId} file={file} />
+        <FileRow key={file.id} agentId={agentId} file={file} task={task} onRemove={onRemove} />
       ))}
     </View>
   );
 }
 
-function FileRow({ agentId, file }: { agentId: string; file: FileRef }) {
+function FileRow({ agentId, file, task, onRemove }: { agentId: string; file: FileRef; task?: boolean; onRemove?: (file: FileRef) => void }) {
   const { pictures, wantFile, dropPicture, status } = useConnection();
   const [wanted, setWanted] = useState(false);
   const data = pictures[file.id];
@@ -48,10 +48,11 @@ function FileRow({ agentId, file }: { agentId: string; file: FileRef }) {
         disabled={status !== 'open'}
         onPress={() => {
           setWanted(true);
-          wantFile(agentId, file);
+          wantFile(agentId, file, task);
         }}
         style={{ minHeight: 36, paddingHorizontal: 14 }}
       />
+      {onRemove && <Btn label="Remove" kind="danger" onPress={() => onRemove(file)} style={{ minHeight: 36, paddingHorizontal: 14 }} />}
     </View>
   );
 }

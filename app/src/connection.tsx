@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Mode, Phone, Plugin, Progress, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Task } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -10,7 +10,7 @@ import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Flag, Mode, Plugin, Progress, Project, TermKey } from '../../protocol';
+export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Flag, Memory, MemoryLayer, Mode, Plugin, Progress, Project, Task, TaskState, TermKey } from '../../protocol';
 export type { Settings } from './link';
 export type { Invitation, Invite } from './invite';
 
@@ -77,6 +77,13 @@ type Connection = {
   progress?: Progress;
   /** The debugging switches this Toto has, and whether each is on. Undefined on a Toto too old to have them. */
   flags?: Flag[];
+  /** What this Toto has been asked to remember, at every layer, and everything on its task list. Empty until it has said. */
+  memories: Memory[];
+  tasks: Task[];
+  /** This Toto keeps memories and tasks at all: false for one too old to, which has nothing to show. */
+  notes: boolean;
+  /** Attaches a file, as base64, to a task: sent in pieces small enough for the relay. */
+  attachFile: (taskId: string, name: string, base64: string) => void;
   /** What can be added to this Toto, and what has been. Undefined on a Toto too old to have plugins. */
   plugins?: Plugin[];
   /** The code to enter, and where, for a plugin sign-in that is under way. */
@@ -109,7 +116,7 @@ type Connection = {
   /** Fetches a picture from an agent's conversation, unless it is here or already on its way. */
   wantPicture: (agentId: string, image: ImageRef) => void;
   /** Fetches a file an agent sent. It arrives in `pictures`, by its id; `dropPicture` lets go of it. */
-  wantFile: (agentId: string, file: FileRef) => void;
+  wantFile: (owner: string, file: FileRef, task?: boolean) => void;
   dropPicture: (id: string) => void;
   /** Says something to an agent, with any pictures to go with it. With `later`, and the agent mid-turn, it waits for the turn to end; otherwise it steers the turn. */
   say: (agentId: string, text: string, pictures?: { mime: string; base64: string }[], later?: boolean) => void;
@@ -197,6 +204,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [plugins, setPlugins] = useState<Plugin[]>();
   const [progress, setProgress] = useState<Progress>();
   const [flags, setFlags] = useState<Flag[]>();
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [notes, setNotes] = useState(false);
   const [live, setLive] = useState<Connection['live']>({});
   const [queued, setQueued] = useState<Connection['queued']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
@@ -264,6 +274,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setPending(undefined);
         setLoaded(true);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
+        break;
+      case 'memories':
+        setNotes(true);
+        setMemories(msg.items);
+        break;
+      case 'tasks':
+        setNotes(true);
+        setTasks(msg.items);
         break;
       case 'queue':
         setQueued((all) => ({ ...all, [msg.agentId]: msg.items }));
@@ -404,6 +422,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setProgress(undefined);
     setLive({});
     setQueued({});
+    setMemories([]);
+    setTasks([]);
+    setNotes(false);
     setPluginLogin(undefined);
     setSoftware(undefined);
     setPhones(undefined);
@@ -502,16 +523,23 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     post({ type: 'image', agentId, id: image.id });
   };
 
-  const wantFile: Connection['wantFile'] = (agentId, file) => {
+  const wantFile: Connection['wantFile'] = (owner, file, task = false) => {
     if (!link.current || pictures[file.id] !== undefined || arriving.current[file.id]) return;
     arriving.current[file.id] = [];
-    post({ type: 'file', agentId, id: file.id });
+    post(task ? { type: 'task_file', taskId: owner, id: file.id } : { type: 'file', agentId: owner, id: file.id });
   };
   const dropPicture = (id: string) =>
     setPictures((all) => {
       const { [id]: _gone, ...rest } = all;
       return rest;
     });
+
+  const attachFile: Connection['attachFile'] = (taskId, name, base64) => {
+    const upload = bytesToHex(getRandomValues(new Uint8Array(8)));
+    const of = Math.ceil(base64.length / PIECE);
+    for (let at = 0; at < of; at++) post({ type: 'upload', id: upload, at, of, data: base64.slice(at * PIECE, (at + 1) * PIECE) });
+    post({ type: 'task_attach', id: taskId, upload, name });
+  };
 
   const say: Connection['say'] = (agentId, text, sending = [], later) => {
     const images = sending.map((picture) => {
@@ -537,7 +565,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, notes, attachFile, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );
