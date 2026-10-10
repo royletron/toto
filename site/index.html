@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
 <link rel="stylesheet" href="/toto.css">
 </head>
-<body>
+<body class="has-wall">
 
 <header class="top">
   <a class="name" href="/">toto<span>_</span></a>
@@ -19,6 +19,8 @@
     <a href="/docs">docs</a>
   </nav>
 </header>
+
+<div class="wall" aria-hidden="true"></div>
 
 <main>
   <section class="hero">
@@ -31,6 +33,7 @@
         <b data-count>Counting Totos…</b>
       </div>
       <p class="dim">That number is live. Every Toto that is switched on holds a line open to the relay, and this page asks the relay how many there are.</p>
+      <p class="dim wallnote">The dogs behind this are what your agents look like in the app: one each, made from its id. <button type="button" data-shuffle>Shuffle them</button></p>
     </div>
     <figure class="shot">
     <div class="session" role="img" aria-label="A conversation in the Toto app. You asked an agent to add retry backoff to a webhook sender. It read a file, and is now asking permission to run the tests, with Allow and Deny buttons.">
@@ -154,5 +157,6 @@
 </footer>
 
 <script src="/toto.js"></script>
+<script type="module" src="/wall.js"></script>
 </body>
 </html>

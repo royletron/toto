@@ -42,6 +42,13 @@ test('every avatar is Toto\'s dog, in five characters, turned a little, in a col
   assert.ok(!PALETTE.some((p) => p.fill.toLowerCase() === '#ffb000'));
 });
 
+test('the page\'s copy of the generator gives the same avatars as the app\'s', async () => {
+  // @ts-expect-error The page's script is plain JavaScript, with no types to find.
+  const site: { PALETTE: typeof PALETTE; avatarFor: typeof avatarFor } = await import('../../site/avatars.js');
+  assert.deepEqual(site.PALETTE, PALETTE);
+  for (let i = 0; i < 3000; i++) assert.deepEqual(site.avatarFor(`seed-${i}`), avatarFor(`seed-${i}`), `seed-${i}`);
+});
+
 test('Toto\'s own face is the commonest', () => {
   let brand = 0;
   for (let i = 0; i < 4000; i++) if (avatarFor(`x${i}`).face === '/o o\\') brand++;

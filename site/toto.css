@@ -19,6 +19,7 @@ html { background: var(--tube); }
 #land { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 body { margin: 0; color: var(--phosphor); font-family: var(--mono); font-size: 15px; line-height: 1.6; padding-inline: 20px; padding-block: 0 80px; }
 main, header.top, footer { max-width: 1000px; margin-inline: auto; }
+main, footer { position: relative; }
 
 a { color: var(--sky); text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
@@ -32,7 +33,7 @@ pre { margin: 0; font-family: inherit; }
 .dim { color: var(--ghost); }
 .amber { color: var(--amber); }
 
-header.top { display: flex; align-items: center; gap: 20px; padding-block: 18px; border-bottom: 1px solid var(--rule); }
+header.top { position: relative; z-index: 1; display: flex; align-items: center; gap: 20px; padding-block: 18px; border-bottom: 1px solid var(--rule); }
 header.top .name { font-weight: 700; color: var(--phosphor); text-decoration: none; margin-right: auto; }
 header.top .name span { color: var(--amber); }
 header.top nav { display: flex; gap: 20px; }
@@ -49,9 +50,19 @@ section + section { border-top: 1px solid var(--rule); padding-top: 40px; }
 .face.waiting, .face.waiting .nose { color: var(--amber); }
 .face.offline, .face.offline .nose { color: var(--ghost); }
 
+/* The wall of dogs behind the opening: an avatar for each of a few hundred ids, fading out below. */
+.wall { --s: 64px; --gap: 14px; position: absolute; inset: 62px 0 auto; height: 440px; overflow: hidden; z-index: 0; pointer-events: none; display: grid; grid-template-columns: repeat(auto-fill, var(--s)); gap: var(--gap); justify-content: center; align-content: start; padding-top: 24px; -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent 88%); mask-image: linear-gradient(to bottom, #000 40%, transparent 88%); }
+.av { width: var(--s); height: var(--s); border-radius: 50%; background: var(--fill); color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; font-weight: 700; font-size: calc(var(--s) * 0.25); line-height: 1.15; white-space: pre; transform: rotate(var(--tilt)); }
+.av > span { display: block; }
+.av > .m { margin-top: -0.4em; }
+/* The hero starts below the wall, which fades out behind its first lines. */
+.has-wall main { padding-top: 330px; }
+@media (max-width: 600px) { .wall { --s: 44px; --gap: 10px; height: 330px; } .has-wall main { padding-top: 262px; } }
+
 /* The opening: what it is on the left, the app at its defining moment on the right. */
 .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 40px 64px; align-items: center; }
 .hero .lead { display: flex; flex-direction: column; gap: 28px; }
+.hero .wallnote button { font: inherit; color: var(--sky); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .hero .face { font-size: clamp(56px, 17vw, 112px); }
 .hero h1 { font-size: clamp(30px, 5.2vw, 52px); letter-spacing: -1.5px; max-width: 12ch; }
 .hero .pitch { font-size: 19px; max-width: 36ch; }

@@ -30,6 +30,7 @@ Tests are `node --test`, next to the code as `*.test.ts` or `*.test.mjs`. No tes
 ## Rules that are easy to break
 
 - **Two files exist twice and must stay identical:** `secure.ts` and `moods.ts`, in `server/src` and `app/src`. A test fails if they drift. Change both.
+- **`site/avatars.js` is a JavaScript copy of `app/src/avatars.ts`**, for the page's wall of dogs. `server/src/avatar.test.ts` fails if they give different avatars. Change both.
 - **Every branch of the `case` in `bin/toto-priv` must end in `exit` or `exec`.** One that does not falls through into the project-user check and fails with "bad user name". This shipped once. `server/src/priv.test.mjs` runs the helper for real; add a case there for any new verb.
 - **Secrets never go on a command line or through `sudo`'s environment**, because both are logged and visible to other users. They go on stdin or in a private file (`~/.toto-env` for agents).
 - **Nothing prints the device token except to a terminal.** `install.sh` is also run by the updater, whose output is kept in the system log.
@@ -47,6 +48,7 @@ Tests are `node --test`, next to the code as `*.test.ts` or `*.test.mjs`. No tes
 - Non-trivial logic leaves one runnable check behind.
 - User-facing text: plain verbs, sentence case, says what happened and what to do. The app and site are terminal-styled: IBM Plex Mono, the palette in `app/src/theme.ts` and `site/toto.css`, amber for whatever is yours or waiting on you.
 - The mark is the dog `/o o\` over a `•` nose. It moves by replacing characters, never by transforming them. Frames live in `moods.ts`.
+- Each agent also has an avatar: that dog with its ears, eyes and mouth varied, tilted a little on a coloured circle, made from the agent's id (`avatars.ts`). The tilt is the one place the dog is turned, and it is still, never animated. Avatars show an agent in lists and its header; the mark itself shows the state of things (the chat, the status line, the Toto-wide screens). Amber is never an avatar's colour, because amber means waiting on you.
 
 ## Releasing
 
