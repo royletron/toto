@@ -59,6 +59,12 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN || secrets.EXPO_SECRET }}
     steps:
+      # An Android build needs more room than a runner has spare: packaging fails, saying only that
+      # it failed, when the disk fills. These are large and nothing here uses them.
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/share/swift /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
