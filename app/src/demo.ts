@@ -48,6 +48,8 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     ],
     a0000002: [
       { type: 'user', text: 'Write up how the retry queue works for the README.' },
+      { type: 'tool_call', id: 'r1', name: 'mcp__plugin_toto-node_node__remember', input: { title: 'The README tone', body: 'Short sentences, no marketing words. Examples before explanation.' } },
+      { type: 'tool_result', id: 'r1', output: 'Remembered as m0000003 (agent).', isError: false },
       { type: 'text', text: 'I have added a **Retries** section to the README. It explains the queue, the backoff schedule and how to change the limit, with a short example.' },
       { type: 'done', isError: false },
     ],

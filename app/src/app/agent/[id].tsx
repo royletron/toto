@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View, Platform } from 'react-native';
+import { toolLabel } from '../../tools';
 import { asksYou, useConnection, type AgentEvent, type FileRef, type ImageRef, type Mode } from '../../connection';
 import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
@@ -64,7 +65,7 @@ function brief(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const i = input as Record<string, unknown>;
   if (typeof i.file_path === 'string') return i.file_path.split('/').slice(-2).join('/');
-  const value = i.command ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt;
+  const value = i.command ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt ?? i.title;
   return typeof value === 'string' ? value : '';
 }
 
@@ -158,14 +159,14 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
       <View style={local.ask} accessibilityLiveRegion="polite">
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Face mood="waiting" size={15} ink={color.tube} />
-          <Txt tone="tube" weight="bold" style={{ flex: 1 }}>Allow {row.name}?</Txt>
+          <Txt tone="tube" weight="bold" style={{ flex: 1 }}>Allow {toolLabel(row.name)}?</Txt>
         </View>
         <Txt tone="tube" style={{ marginTop: 4 }}>{what || JSON.stringify(row.input)}</Txt>
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-          <Pressable onPress={() => onDecide(true)} disabled={!online} accessibilityRole="button" accessibilityLabel={`Allow ${row.name}`} style={({ pressed }) => [local.askBtn, { backgroundColor: color.tube, flex: 1 }, !online && { opacity: 0.4 }, pressed && { opacity: 0.7 }]}>
+          <Pressable onPress={() => onDecide(true)} disabled={!online} accessibilityRole="button" accessibilityLabel={`Allow ${toolLabel(row.name)}`} style={({ pressed }) => [local.askBtn, { backgroundColor: color.tube, flex: 1 }, !online && { opacity: 0.4 }, pressed && { opacity: 0.7 }]}>
             <Txt tone="amber" weight="bold">Allow</Txt>
           </Pressable>
-          <Pressable onPress={() => onDecide(false)} disabled={!online} accessibilityRole="button" accessibilityLabel={`Deny ${row.name}`} style={({ pressed }) => [local.askBtn, { borderWidth: 1.5, borderColor: color.tube }, !online && { opacity: 0.4 }, pressed && { opacity: 0.7 }]}>
+          <Pressable onPress={() => onDecide(false)} disabled={!online} accessibilityRole="button" accessibilityLabel={`Deny ${toolLabel(row.name)}`} style={({ pressed }) => [local.askBtn, { borderWidth: 1.5, borderColor: color.tube }, !online && { opacity: 0.4 }, pressed && { opacity: 0.7 }]}>
             <Txt tone="tube" weight="bold">Deny</Txt>
           </Pressable>
         </View>
@@ -175,10 +176,10 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
 
   const firstLine = row.result?.output.split('\n').find((l) => l.trim()) ?? '';
   return (
-    <Pressable onPress={() => setExpanded(!expanded)} accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={`${row.name} ${what}`} style={local.tool}>
+    <Pressable onPress={() => setExpanded(!expanded)} accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={`${toolLabel(row.name)} ${what}`} style={local.tool}>
       <Txt numberOfLines={expanded ? undefined : 1}>
         <Txt tone={row.decision === false ? 'raspberry' : row.result?.isError ? 'raspberry' : 'ghost'}>{row.decision === false ? '✕ ' : '▸ '}</Txt>
-        <Txt weight="medium">{row.name}</Txt>
+        <Txt weight="medium">{toolLabel(row.name)}</Txt>
         <Txt tone="ghost">{'  ' + what}</Txt>
       </Txt>
       {row.decision === false && <Txt tone="raspberry" small style={local.under}>you denied this</Txt>}
@@ -219,7 +220,7 @@ function AgentCard({ row, agentId, online, deciding, decide }: { row: ToolItem; 
   const running = !row.result && row.decision !== false;
   const latest = calls.findLast((c) => !c.result);
   const reported = row.result?.output.split('\n').find((l) => l.trim()) ?? '';
-  const doing = running ? (latest ? `${latest.name} ${brief(latest.input)}`.trim() : 'Starting…') : reported;
+  const doing = running ? (latest ? `${toolLabel(latest.name)} ${brief(latest.input)}`.trim() : 'Starting…') : reported;
   const who = typeof input.subagent_type === 'string' && input.subagent_type ? input.subagent_type : 'subagent';
   const task = typeof input.description === 'string' ? input.description : '';
   const prompt = typeof input.prompt === 'string' ? input.prompt : '';
