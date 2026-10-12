@@ -1,0 +1,11 @@
+.git
+**/node_modules
+app
+relay
+site
+store
+image
+docker/*.md
+.github
+*.md
+!server/**/*.md

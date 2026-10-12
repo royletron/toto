@@ -32,7 +32,18 @@ cd toto
 sudo ./install.sh
 ```
 
-Then, in the app, choose **Find a new Toto nearby**. The app is not in a store yet; see [Building the app](#the-app) below. The [documentation](https://toto.royletron.dev/docs) covers the rest.
+**In Docker, on any machine:** the server, without the relay, as an image.
+
+```sh
+docker run -it --name toto --cap-add NET_ADMIN \
+  -v toto-data:/var/lib/toto -v toto-home:/home \
+  -e TOTO_ADDRESS=<this machine's address>:7860 -p 7860:7860 \
+  ghcr.io/stellar-engineering/toto
+```
+
+It prints the address, the token and a QR code to add it in the app; `docker exec -it toto toto login` shows them again. [More on running it in Docker](https://toto.royletron.dev/docs#docker).
+
+Then, in the app, choose **Find a new Toto nearby** (or scan the code, for one in Docker). The app is not in a store yet; see [Building the app](#the-app) below. The [documentation](https://toto.royletron.dev/docs) covers the rest.
 
 ## What is in here
 
@@ -44,6 +55,7 @@ Then, in the app, choose **Find a new Toto nearby**. The app is not in a store y
 | `site/` | The site at toto.royletron.dev. Plain HTML, CSS and a little JavaScript. |
 | `bin/` | What runs as root on a Toto: the helper the server asks for privileged things, the updater, first-boot setup. |
 | `image/` | Builds the flashable Raspberry Pi image from the official Raspberry Pi OS Lite. |
+| `docker/` | The Dockerfile and entrypoint for the server as a container image. |
 | `protocol.ts` | The messages the app and the server exchange. Types only. |
 | `install.sh` | Installs or upgrades Toto on a machine. |
 | [`PLAN.md`](PLAN.md), [`SPEC.md`](SPEC.md) | Where this is going, and the decisions made so far. |

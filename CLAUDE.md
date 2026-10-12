@@ -14,6 +14,7 @@ This repository is public. Never commit a hostname, address, token or network na
 - `site/`: plain HTML, one stylesheet, one script. No build step. `site/app/` is the app built for the browser (`cd app && npx expo export -p web`, then copy `dist` there); it is generated and git-ignored.
 - The app runs on phones and in a browser. Anything native-only has a `.web.ts` twin beside it (`storage`, `push`, `ble`); a browser reaches a Toto through the relay only.
 - `image/`: builds the flashable Pi image by customising Raspberry Pi OS Lite.
+- `docker/`: the server as a container image (not the relay). Its entrypoint does what `toto-firstboot` and systemd do on a Pi, and shows the login (address, token, a QR code) only to a terminal. `.github/workflows/docker.yml` builds and tries it on every change, and publishes it to GHCR for amd64 and arm64 on a `v*` tag. The Dockerfile pins the browser tools to the version in `install.sh`; a test keeps them together.
 
 ## Checks to run
 

@@ -25,3 +25,16 @@ test('listing Wi-Fi prints the networks and succeeds', () => {
 test('anything that is not one of its commands, or names no project user, is refused', () => {
   for (const args of [[], ['wifi-list-all'], ['delete-user', 'root'], ['create-user', 'toto-p-zzzzzzzz'], ['wifi-country', 'gb; reboot'], ['plugin-install'], ['plugin-install', '../gh'], ['plugin-remove', 'gh;reboot'], ['plugin-install', 'Gh']]) assert.equal(run(...args).status, 2, args.join(' '));
 });
+
+test('without the capability to change the firewall, the helper still says so, and only a file root wrote lets it carry on', () => {
+  // A firewall tool that cannot do its job, as in a container without NET_ADMIN.
+  fake('nft', 'echo "Operation not permitted" >&2; exit 1');
+  fake('id', 'echo 50001');
+  const walled = { PATH: `${bin}:${process.env.PATH}`, TOTO_NO_FIREWALL_FILE: '/nonexistent/no-firewall' };
+  const without = spawnSync('bash', [priv, 'restrict-lan', 'toto-p-aaaaaaaa'], { encoding: 'utf8', env: walled });
+  assert.notEqual(without.status, 0, 'no firewall and no file: it fails, it does not carry on');
+  const marker = join(mkdtempSync(join(tmpdir(), 'toto-nofw-')), 'no-firewall');
+  writeFileSync(marker, '');
+  const allowed = { PATH: walled.PATH, TOTO_NO_FIREWALL_FILE: marker };
+  for (const verb of ['restrict-lan', 'allow-lan']) assert.equal(spawnSync('bash', [priv, verb, 'toto-p-aaaaaaaa'], { encoding: 'utf8', env: allowed }).status, 0, verb);
+});

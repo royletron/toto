@@ -73,7 +73,8 @@ const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents
   // A device with saved state from before this was recorded has been in use, so it has one.
   claimed: existsSync(stateFile),
   // What this device is called, until someone gives it a better name from the app.
-  name: hostname(),
+  // A container's hostname is a string of hex, so it can be given a name from outside.
+  name: process.env.TOTO_NAME?.trim().slice(0, 60) || hostname(),
   projects: [],
   agents: [],
   pushTokens: [],
@@ -172,7 +173,10 @@ function follow(grace = 5000) {
 }
 // What the relay lists as plugins; only a hint, like `latest`.
 let offered: Awaited<ReturnType<typeof listed>> = [];
+// A container is updated by pulling a newer image, not by installing over itself.
+const container = process.env.TOTO_CONTAINER === '1';
 async function checkForUpdate() {
+  if (container) return;
   const res = await fetch(`${RELEASES}/version`, { signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
   const found = res?.ok ? (await res.text()).trim() : undefined;
   // Only a hint for the app to show: the updater decides for itself what is newer.
@@ -201,6 +205,7 @@ const snapshot = (): ServerMessage => ({
   owner: true,
   plugins: describe(installed(), offered),
   flags: describeFlags(),
+  ...(container ? { container: true } : null),
 });
 
 /** The phones this device is shared with, less any invitation that ran out unused. */
@@ -763,6 +768,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       await Promise.all([checkForUpdate(), checkForPlugins()]);
       return send(ws, snapshot());
     case 'update': {
+      if (container) throw new Error('This Toto runs in a container. Pull a newer image to update it.');
       // The install restarts the server, which would cut off anything mid-thought.
       if (thinking.size) throw new Error('Agents are working. Update when they have finished.');
       updating = true;
@@ -933,7 +939,8 @@ const lanIp = () => {
     for (const a of addresses ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
   return undefined;
 };
-const lanAddress = () => `ws://${lanIp() ?? `${hostname()}.local`}:${port}`;
+// In a container the address it can see is not one a phone can use, so it can be told its real one.
+const lanAddress = () => (process.env.TOTO_ADDRESS ? `ws://${process.env.TOTO_ADDRESS}` : `ws://${lanIp() ?? `${hostname()}.local`}:${port}`);
 
 // Pairing mode, opened by hand at the device: for a while, a new phone may claim it as if it had no owner.
 let pairingUntil = 0;

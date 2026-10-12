@@ -62,6 +62,21 @@
 cd toto
 sudo ./install.sh</pre>
     <p>It installs Node, Claude Code and Toto, sets Toto up as a service, and prints the address and token to give the app. It is safe to run again to upgrade.</p>
+    <h3 id="docker">In Docker</h3>
+    <p>The same server as an image, for any machine that runs Docker, on x86 or ARM. It is the server only: the relay is a separate thing, and Toto uses the public one unless you say otherwise. With no Bluetooth to hand it over, it shows you how to add it instead.</p>
+    <pre class="block">docker run -it --name toto --cap-add NET_ADMIN \
+  -v toto-data:/var/lib/toto -v toto-home:/home \
+  -e TOTO_ADDRESS=192.168.1.20:7860 -p 7860:7860 \
+  ghcr.io/stellar-engineering/toto</pre>
+    <p>It prints the address, the token and a QR code. Point the phone's camera at the code and it opens the app and adds the Toto; or choose <b>Enter an address and token</b> and type them. To see it again later: <code>docker exec -it toto toto login</code>. It is shown only to a terminal (<code>-it</code>), because a log keeps what it is given; set <code>TOTO_SHOW_LOGIN=1</code> if you want it in the log anyway.</p>
+    <ul>
+      <li><b>Two volumes.</b> <code>/var/lib/toto</code> holds its state, token and keys, and <code>/home</code> holds your projects. Without them everything is lost when the container is.</li>
+      <li><b>Isolation.</b> As on a Pi, each project is a Linux user of its own, and its agents are kept off your home network by a firewall inside the container. That needs <code>--cap-add NET_ADMIN</code>. If you wall the network off some other way, such as a Docker network with no route to your LAN, set <code>TOTO_NO_FIREWALL=1</code> to say so.</li>
+      <li><b>Its address.</b> From inside, the container cannot know the address your phone reaches it at. Tell it with <code>TOTO_ADDRESS=host:port</code> so the code carries it. Leave it out and the phone reaches it through the relay only.</li>
+      <li><b>The relay.</b> On by default. <code>-e TOTO_RELAY_URL=</code> (empty) turns it off, and a <code>wss://</code> address uses your own.</li>
+      <li><b>Name and keys.</b> <code>TOTO_NAME</code> names it. <code>TOTO_TOKEN</code> brings your own token, and <code>ANTHROPIC_API_KEY</code> or <code>CLAUDE_CODE_OAUTH_TOKEN</code> signs it in to Claude, though you can do that from the app.</li>
+      <li><b>Updating.</b> A container is updated by pulling a newer image and starting it again on the same volumes. The app says so in settings, and has no update button for it. Project users are made again from their files.</li>
+    </ul>
   </section>
 
   <section aria-labelledby="setup">

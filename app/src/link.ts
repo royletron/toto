@@ -129,6 +129,8 @@ export function reach(to: Settings, handlers: Handlers, done: (result: Link | Un
     }
     return attempt(`${relay}/v1/${deviceId}?role=client&k=${relayKey}`, psk, phone, 'relay', handlers, done);
   };
+  // A Toto added by a link may be reachable by its relay alone.
+  if (!to.address.trim()) return viaRelay();
   // A page served over https may not open an unencrypted connection, which is what a Toto's own
   // address is. A browser on such a page goes straight to the relay.
   if (typeof window !== 'undefined' && window.location?.protocol === 'https:' && to.address.trim().startsWith('ws://')) return viaRelay();

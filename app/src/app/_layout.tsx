@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, View, type AlertButton } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
 import { Face } from '../face';
-import { invitationIn } from '../invite';
+import { Adding } from '../add';
+import { additionIn, invitationIn } from '../invite';
 import { Joining } from '../join';
 import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
@@ -106,6 +107,12 @@ function Root() {
     const { hostname, path, queryParams } = Linking.parse(url);
     return hostname === 'join' || path === 'join' ? { found: invitationIn(queryParams ?? {}) } : undefined;
   }, [url]);
+  // A link that adds a Toto (toto://add), the same way.
+  const addition = useMemo(() => {
+    if (!url) return undefined;
+    const { hostname, path, queryParams } = Linking.parse(url);
+    return hostname === 'add' || path === 'add' ? { found: additionIn(queryParams ?? {}) } : undefined;
+  }, [url]);
   const [dealtWith, setDealtWith] = useState<string>();
   // The same for a link to the demo, which needs nothing but opening.
   const { addDemo } = useConnection();
@@ -121,6 +128,12 @@ function Root() {
     return (
       <Screen bare>
         <Joining invitation={invitation.found} onDone={() => setDealtWith(url ?? undefined)} />
+      </Screen>
+    );
+  if (status === 'setup' && addition && dealtWith !== url)
+    return (
+      <Screen bare>
+        <Adding addition={addition.found} onDone={() => setDealtWith(url ?? undefined)} />
       </Screen>
     );
   if (status === 'setup') return <Setup />;

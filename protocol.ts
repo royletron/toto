@@ -169,6 +169,8 @@ export type ServerMessage =
       plugins?: Plugin[];
       /** Absent from a Toto that predates them. */
       flags?: Flag[];
+      /** It runs in a container, which is updated by pulling a newer image, not from here. */
+      container?: boolean;
       /** A job under way, or one that failed in the last few minutes. */
       progress?: Progress;
     }

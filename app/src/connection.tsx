@@ -66,7 +66,7 @@ type Connection = {
   /** How this Toto's agents are signed in to Claude. Undefined until it has said. */
   claude?: ClaudeAccount;
   /** What this Toto runs, the newer release there is if any, and whether it is installing one. Undefined on a Toto too old to say. */
-  software?: { version: string; latest?: string; updating: boolean };
+  software?: { version: string; latest?: string; updating: boolean; container?: boolean };
   /** The page to open for a Claude sign-in that is under way. */
   claudeLogin?: string;
   /** What is waiting to be said to each chat agent when its turn ends, by agent id. */
@@ -213,7 +213,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
   const [invite, setInvite] = useState<Invite>();
-  const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean }>();
+  const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean; container?: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
   const [pictures, setPictures] = useState<Connection['pictures']>({});
@@ -255,7 +255,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setAgents(msg.agents);
         setSshKey(msg.sshKey);
         setIdentity(msg.identity);
-        setSoftware(msg.version ? { version: msg.version, latest: msg.latest, updating: msg.updating } : undefined);
+        setSoftware(msg.version ? { version: msg.version, latest: msg.latest, updating: msg.updating, container: msg.container } : undefined);
         setClaude((was) => {
           // However it changed, a sign-in that was under way is over.
           if (was !== msg.claude) setClaudeLogin(undefined);

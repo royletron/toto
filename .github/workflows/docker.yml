@@ -1,0 +1,113 @@
+# The Toto server as a container image: built and tried on every change to it, and published to
+# GitHub's registry, for amd64 and arm64, whenever a server release is tagged. Not the relay.
+name: Docker image
+on:
+  push:
+    branches: [main]
+    paths: ['docker/**', '.dockerignore', 'server/**', 'bin/**', '.github/workflows/docker.yml']
+    tags: ['v*']
+  pull_request:
+    paths: ['docker/**', '.dockerignore', 'server/**', 'bin/**', '.github/workflows/docker.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Builds it without the browser (faster) and runs it, since nothing else can say whether it starts.
+  try:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -f docker/Dockerfile --build-arg WITH_BROWSER=0 -t toto-try .
+      - name: Without NET_ADMIN it says why, and does not start
+        run: |
+          if docker run --rm toto-try 2> why.txt; then echo "started without a firewall" >&2; exit 1; fi
+          grep -q 'cannot change its firewall' why.txt
+      - name: Start it, with its login shown in the log
+        run: |
+          docker volume create toto-data
+          docker volume create toto-home
+          docker run -d --name toto --cap-add NET_ADMIN -v toto-data:/var/lib/toto -v toto-home:/home \
+            -e TOTO_SHOW_LOGIN=1 -e TOTO_RELAY_URL= -e TOTO_ADDRESS=192.0.2.10:7860 -e TOTO_NAME="CI box" -p 7860:7860 toto-try
+          for i in $(seq 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' toto)" = healthy ] && break
+            sleep 2
+          done
+          docker logs toto
+          [ "$(docker inspect -f '{{.State.Health.Status}}' toto)" = healthy ]
+          docker logs toto 2>&1 | grep -q 'toto://add?'
+      - name: The login can be shown again, and is the token the server uses
+        run: |
+          token="$(docker exec toto cat /var/lib/toto/token)"
+          test "${#token}" = 32
+          echo "$token" > "$RUNNER_TEMP/token"
+          docker exec toto toto login | grep -q "$token"
+          docker exec toto toto login | grep -q 'ws://192.0.2.10:7860'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The server answers a WebSocket
+        run: |
+          node --input-type=module -e "
+            const ws = new WebSocket('ws://127.0.0.1:7860');
+            ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', n: '0'.repeat(32) }));
+            ws.onmessage = (m) => { console.log(JSON.parse(m.data).t); process.exit(0); };
+            ws.onerror = () => process.exit(1);
+            setTimeout(() => process.exit(1), 10000);"
+      - name: A new container keeps the token, and makes a project's user again with the id that owns its files
+        run: |
+          docker stop toto && docker rm toto
+          docker run --rm -v toto-home:/home debian:13-slim sh -c 'mkdir /home/toto-p-aaaaaaaa && chown 50123:50123 /home/toto-p-aaaaaaaa'
+          docker run -d --name toto2 --cap-add NET_ADMIN -v toto-data:/var/lib/toto -v toto-home:/home -e TOTO_RELAY_URL= toto-try
+          for i in $(seq 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' toto2)" = healthy ] && break
+            sleep 2
+          done
+          test "$(docker exec toto2 id -u toto-p-aaaaaaaa)" = 50123
+          test "$(docker exec toto2 cat /var/lib/toto/token)" = "$(cat "$RUNNER_TEMP/token")"
+      - name: Without the capability but told so, it starts
+        run: |
+          docker run -d --name toto3 -e TOTO_NO_FIREWALL=1 -e TOTO_RELAY_URL= toto-try
+          for i in $(seq 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' toto3)" = healthy ] && break
+            sleep 2
+          done
+          [ "$(docker inspect -f '{{.State.Health.Status}}' toto3)" = healthy ]
+          docker exec toto3 test -e /etc/toto/no-firewall
+
+  # The release image, with the browser, for both architectures: only for a tagged release.
+  publish:
+    needs: try
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag is the version
+        run: test "v$(node -p "require('./server/package.json').version")" = "$GITHUB_REF_NAME"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

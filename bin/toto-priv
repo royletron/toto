@@ -93,8 +93,12 @@ add rule inet toto output ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 
 add rule inet toto output ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } reject with icmpx admin-prohibited
 RULES
 }
-restrict() { firewall; nft add element inet toto restricted "{ $(id -u "$1") }"; }
-unrestrict() { firewall; nft delete element inet toto restricted "{ $(id -u "$1") }" 2>/dev/null || true; }
+# A container that cannot have the capability to change its firewall says so with this file, written
+# by its entrypoint as root, and the network is then walled off from outside instead. Nothing the
+# server can write or send makes the helper skip the rules.
+unwalled() { [ -e "${TOTO_NO_FIREWALL_FILE:-/etc/toto/no-firewall}" ]; }
+restrict() { unwalled && return 0; firewall; nft add element inet toto restricted "{ $(id -u "$1") }"; }
+unrestrict() { unwalled && return 0; firewall; nft delete element inet toto restricted "{ $(id -u "$1") }" 2>/dev/null || true; }
 
 case "${1:-}" in
   create-user)

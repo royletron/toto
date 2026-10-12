@@ -29,3 +29,17 @@ export function invitationIn(params: Record<string, unknown>): Invitation | unde
   if (!/^[0-9a-f]{32}$/.test(deviceId) || !/^[0-9a-f]{64}$/.test(relayKey) || !/^[0-9a-f]{8}$/.test(phoneId) || !/^[0-9a-f]{32}$/.test(secret) || !name.trim()) return undefined;
   return found as Invitation;
 }
+
+/** What a link from a Toto that cannot use Bluetooth carries (toto://add?…, made by the server's welcome.ts): where it is, how to reach it from away, and its token. */
+export type Addition = { address: string; relay: string; token: string; name: string };
+
+/** Reads one out of a link's parameters. Undefined if it is not one, or not whole: it came from a camera pointed at who knows what. */
+export function additionIn(params: Record<string, unknown>): Addition | undefined {
+  const text = (key: string) => (typeof params[key] === 'string' ? (params[key] as string) : '');
+  const [address, relay, token, name] = [text('a'), text('r'), text('t'), text('n').trim()];
+  if ([address, relay, token, name].some((v) => v.length > 300)) return undefined;
+  // Only a WebSocket is ever dialled, and a Toto has to be reachable somehow.
+  if ((address && !/^wss?:\/\/\S+$/.test(address)) || (relay && !/^wss?:\/\/\S+$/.test(relay)) || (!address && !relay)) return undefined;
+  if (!/^[\w.-]{8,200}$/.test(token)) return undefined;
+  return { address, relay, token, name: name.slice(0, 60) };
+}

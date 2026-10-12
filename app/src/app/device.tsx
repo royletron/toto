@@ -199,7 +199,9 @@ export default function Device() {
             <Section
               title="Software"
               about={
-                software.updating
+                software.container
+                  ? `Version ${software.version}. This Toto runs in a container: to update it, pull a newer image and start it again.`
+                  : software.updating
                   ? `Updating. ${progress?.task === 'update' ? progressText(progress) + '. ' : ''}Your Toto restarts when it is done, which takes a few minutes.`
                   : progress?.task === 'update' && progress.failed
                     ? `${progress.text} It is still on version ${software.version}.`
@@ -207,7 +209,7 @@ export default function Device() {
                       ? `Version ${software.version}. Version ${software.latest} is available.`
                       : `Version ${software.version}. Up to date.`
               }>
-              {software.latest ? (
+              {software.container ? null : software.latest ? (
                 <Btn kind="primary" label={software.updating ? 'Updating…' : pending?.type === 'update' ? 'Downloading and checking…' : `Update to ${software.latest}`} onPress={update} busy={software.updating || pending?.type === 'update'} disabled={busy || status !== 'open'} />
               ) : (
                 <Btn label={pending?.type === 'check_update' ? 'Checking…' : 'Check for updates'} onPress={() => request({ type: 'check_update' })} busy={pending?.type === 'check_update'} disabled={software.updating || busy || status !== 'open'} />

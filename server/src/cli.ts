@@ -7,12 +7,16 @@
 //   toto pair off         close it again
 //   toto name <new name>  rename this Toto
 //   toto wifi             choose a Wi-Fi network
+//   toto login            how to add this Toto in the app: address, token and a QR code
 //
 // It talks to the running server over a local socket, so it needs to be run as root.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { createInterface } from 'node:readline';
+import { existsSync, readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { FRAMES, type Mood } from './moods.ts';
+import { loginLines } from './welcome.ts';
 
 const SOCKET = process.env.TOTO_CTL ?? '/run/toto/ctl.sock';
 const PRIV = '/opt/toto/bin/toto-priv';
@@ -210,12 +214,29 @@ else if (command === 'pair') {
   const status = await ask({ cmd: 'rename', name: rest.join(' ') });
   console.log(status ? `This Toto is now called ${status.name}.` : raspberry('The Toto service is not running, or this was not run as root.'));
 } else if (command === 'wifi') await wifi();
+else if (command === 'login') {
+  // The token is wherever this Toto keeps it: the environment (a container), or the file an install writes.
+  const dataDir = process.env.TOTO_DATA_DIR ?? '/var/lib/toto';
+  const env = (name: string) => {
+    if (process.env[name]) return process.env[name];
+    for (const file of ['/etc/toto.env']) if (existsSync(file)) return new RegExp(`^${name}=(.*)$`, 'm').exec(readFileSync(file, 'utf8'))?.[1];
+  };
+  const token = env('TOTO_TOKEN') ?? (existsSync(`${dataDir}/token`) ? readFileSync(`${dataDir}/token`, 'utf8').trim() : undefined);
+  if (!token) {
+    console.log(raspberry('This Toto has no token yet. Start it first.'));
+    process.exit(1);
+  }
+  const status = await ask({ cmd: 'status' });
+  const port = Number(env('TOTO_PORT')) || 7860;
+  const address = env('TOTO_ADDRESS') ?? (status?.ip ? `${status.ip}:${port}` : undefined);
+  console.log('\n' + loginLines({ name: status?.name ?? env('TOTO_NAME') ?? hostname(), token, port, address, relay: env('TOTO_RELAY_URL') || status?.relay || undefined }).map((l) => `  ${l}`).join('\n') + '\n');
+}
 else if (!command || command === 'status') {
   const status = await ask({ cmd: 'status' });
   const [top, bottom] = face(moodOf(status), 0);
   const body = describe(status);
   console.log([`\n   ${top}  ${bold(status?.name ?? 'toto')}`, `   ${bottom}  ${body[0] ?? ''}`, ...body.slice(1).map((l) => `   ${l}`), ''].join('\n'));
 } else {
-  console.log('usage: toto [status | pair [minutes|off] | name <new name> | wifi]');
+  console.log('usage: toto [status | pair [minutes|off] | name <new name> | wifi | login]');
   process.exit(2);
 }
