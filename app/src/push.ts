@@ -11,12 +11,13 @@ Notifications.setNotificationHandler({
  * This phone's push token, asking for permission the first time. Undefined when push is not
  * available: permission refused, or running in Expo Go on Android, which cannot receive it.
  */
-export async function pushToken(): Promise<string | undefined> {
+export async function pushToken(ask = true): Promise<string | undefined> {
   try {
     if (Platform.OS === 'android')
       await Notifications.setNotificationChannelAsync('default', { name: 'Agents', importance: Notifications.AndroidImportance.HIGH });
     let { granted } = await Notifications.getPermissionsAsync();
-    if (!granted) ({ granted } = await Notifications.requestPermissionsAsync());
+    // Asking is for when it is wanted for the first time; to take it back, not being allowed means there is nothing to take back.
+    if (!granted && ask) ({ granted } = await Notifications.requestPermissionsAsync());
     if (!granted) return undefined;
     const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
     if (!projectId) return undefined;

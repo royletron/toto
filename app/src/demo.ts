@@ -185,6 +185,7 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
       case 'term_close':
       case 'term_input':
       case 'register_push':
+      case 'unregister_push':
       case 'upload':
         return;
       case 'check_update':

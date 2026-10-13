@@ -49,7 +49,7 @@ type Connection = {
   /** Changes where the current Toto is looked for, and reconnects. An empty relay means local network only. */
   relocate: (where: Pick<Settings, 'address' | 'relay'>) => void;
   /** Stops knowing the current Toto, and moves to another if there is one. */
-  forget: () => void;
+  forget: () => Promise<void>;
   post: (message: ClientMessage) => void;
   /** Like `post`, for requests that take a while. `pending` is that request until the server answers. */
   request: (message: ClientMessage) => void;
@@ -500,8 +500,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     dial(moved);
   };
 
-  const forget = () => {
+  const forget = async () => {
     if (!node) return;
+    // Tell the Toto to stop notifying this phone while there is a line to tell it on. Forgetting only
+    // this phone's copy would leave the Toto sending to it for good.
+    if (link.current && node.address !== DEMO) {
+      const token = await pushToken(false);
+      if (token) {
+        post({ type: 'unregister_push', token });
+        // Long enough for the message to be on its way before the line is dropped.
+        await new Promise((done) => setTimeout(done, 250));
+      }
+    }
     const rest = saved.nodes.filter((n) => n.id !== node.id);
     remember(() => ({ active: rest[0]?.id, nodes: rest }));
     show(rest[0]);

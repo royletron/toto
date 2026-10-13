@@ -259,6 +259,8 @@ export type ClientMessage =
   | { type: 'update' }
   // This phone's push token, so the device can tell it when an agent needs attention.
   | { type: 'register_push'; token: string }
+  // This phone is forgetting this Toto: stop sending it notifications. A phone that was shared in may only take back its own.
+  | { type: 'unregister_push'; token: string }
   | { type: 'set_identity'; name: string; email: string }
   | { type: 'create_project'; name: string; repo: string }
   | { type: 'set_lan'; projectId: string; allow: boolean }

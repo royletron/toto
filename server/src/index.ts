@@ -503,6 +503,13 @@ async function handle(msg: ClientMessage, ws: Client) {
       // The newest few: a phone gets a fresh token now and then, and old ones would otherwise pile up.
       state.pushTokens = [...state.pushTokens, msg.token].slice(-10);
       return save();
+    case 'unregister_push':
+      if (!isPushToken(msg.token)) return;
+      // The owner's phone has no record of its own and may take back any token; a phone shared in, only its own.
+      if (ws.phone && !ws.phone.push?.includes(msg.token)) return;
+      state.pushTokens = state.pushTokens.filter((t) => t !== msg.token);
+      for (const phone of state.phones) phone.push = phone.push?.filter((t) => t !== msg.token);
+      return save();
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();

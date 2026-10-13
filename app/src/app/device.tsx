@@ -122,7 +122,7 @@ export default function Device() {
   const router = useRouter();
 
   const confirmForget = () =>
-    Alert.alert('Forget this Toto?', 'This phone will stop connecting to it. Nothing on the Toto changes, and you can connect again with its address and token.', [
+    Alert.alert('Forget this Toto?', status === 'open' ? 'This phone will stop connecting to it, and it will stop sending this phone notifications. You can connect again with its address and token.' : 'This phone will stop connecting to it. It cannot be reached now, so it cannot be told to stop sending this phone notifications: connect to it first if you want that. You can connect again with its address and token.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Forget',

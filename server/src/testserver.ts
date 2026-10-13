@@ -11,8 +11,9 @@ export type Line = { said: any[]; send: (m: object) => void; next: (type: string
 /** A real server, with its token `owner-token`, to be talked to as phones. It is stopped when the test file ends. */
 export function startServer(env: Record<string, string> = {}) {
   const port = 20000 + Math.floor(Math.random() * 20000);
+  const dataDir = mkdtempSync(join(tmpdir(), 'toto-test-'));
   const server = spawn(process.execPath, [new URL('./index.ts', import.meta.url).pathname], {
-    env: { ...process.env, TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: mkdtempSync(join(tmpdir(), 'toto-test-')), TOTO_RELAY_URL: '', ...env },
+    env: { ...process.env, TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: dataDir, TOTO_RELAY_URL: '', ...env },
     stdio: 'ignore',
   });
   after(() => server.kill());
@@ -57,5 +58,5 @@ export function startServer(env: Record<string, string> = {}) {
     }
   }
   const soon = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'nothing'>((r) => setTimeout(() => r('nothing'), 1500))]);
-  return { port, dial, soon };
+  return { port, dial, soon, dataDir };
 }
