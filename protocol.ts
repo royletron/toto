@@ -121,6 +121,9 @@ export type Memory = {
 
 /** Something to be done, kept on the Toto: raised by an agent or by hand, and worked on by one. */
 export type TaskState = 'open' | 'working' | 'done';
+/** A label for tasks, with the colour it is drawn in: made up from its name unless someone chose one. */
+export type Tag = { name: string; color: string };
+
 export type Task = {
   id: string;
   title: string;
@@ -132,6 +135,8 @@ export type Task = {
   updated: number;
   state: TaskState;
   files: FileRef[];
+  /** Labels, lower case. Absent from a task made before there were tags. */
+  tags?: string[];
 };
 
 /** A switch for finding things out, on a Toto. */
@@ -185,6 +190,8 @@ export type ServerMessage =
   // either changes.
   | { type: 'memories'; items: Memory[] }
   | { type: 'tasks'; items: Task[] }
+  // Every tag in use on a task, with its colour, sent with `tasks`.
+  | { type: 'tags'; items: Tag[] }
   // How a job on the device is going, sent as it changes, so the whole `state` need not be (and so an
   // app that does not know this message is not told its own request has been answered). Absent: no job.
   | { type: 'progress'; progress?: Progress }
@@ -240,7 +247,11 @@ export type ClientMessage =
   | { type: 'memory_delete'; id: string }
   // Tasks: `id` edits one (a new project or agent moves it), without it makes one. Files come from
   // `upload` pieces, as pictures do; `task_file` asks for one back, as `file` messages.
-  | { type: 'task_save'; id?: string; title: string; description: string; projectId: string; agentId?: string; state: TaskState }
+  | { type: 'task_save'; id?: string; title: string; description: string; projectId: string; agentId?: string; state: TaskState; tags?: string[] }
+  // Tags: `color` is a #rrggbb, or absent to go back to the one made up from the name. Renaming onto a tag that exists joins them; deleting takes the tag off every task.
+  | { type: 'tag_color'; name: string; color?: string }
+  | { type: 'tag_rename'; name: string; to: string }
+  | { type: 'tag_delete'; name: string }
   | { type: 'task_delete'; id: string }
   | { type: 'task_attach'; id: string; upload: string; name: string }
   | { type: 'task_detach'; id: string; fileId: string }

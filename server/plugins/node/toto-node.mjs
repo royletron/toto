@@ -26,12 +26,12 @@ export const TOOLS = [
   {
     name: 'raise_task',
     description: 'Put something on the person\'s list of things to do for later, when it is not for you to do now: a follow-up, a bug you noticed, an idea. Say enough that it makes sense on its own. files are paths inside the project to attach (up to 10 MB each).',
-    inputSchema: { type: 'object', required: ['title'], properties: { title: str('A short title.'), description: str('What and why.'), files: { type: 'array', items: { type: 'string' } } } },
+    inputSchema: { type: 'object', required: ['title'], properties: { title: str('A short title.'), description: str('What and why.'), tags: { type: 'array', items: { type: 'string' }, description: 'Labels, such as bug or docs. Up to 8, each up to 24 characters. Reuse the ones already in use where they fit.' }, files: { type: 'array', items: { type: 'string' } } } },
   },
   {
     name: 'update_task',
-    description: 'Change a task of this project: its title, description or state (open, working or done), and attach more files. Only what you give changes. Use it to keep a task true as you work on it, such as adding what you found.',
-    inputSchema: { type: 'object', required: ['id'], properties: { id: str('The task id.'), title: str('A new title.'), description: str('A new description, replacing the old.'), state: { type: 'string', enum: ['open', 'working', 'done'] }, files: { type: 'array', items: { type: 'string' } } } },
+    description: 'Change a task of this project: its title, description, state (open, working or done) or tags, and attach more files. Only what you give changes. Use it to keep a task true as you work on it, such as adding what you found.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: str('The task id.'), title: str('A new title.'), description: str('A new description, replacing the old.'), state: { type: 'string', enum: ['open', 'working', 'done'] }, tags: { type: 'array', items: { type: 'string' }, description: "The task's labels, replacing the old ones. Leave out to keep them." }, files: { type: 'array', items: { type: 'string' } } } },
   },
   { name: 'list_tasks', description: 'The tasks still open in this project, with their ids.', inputSchema: { type: 'object', properties: {} } },
   { name: 'done_task', description: 'Mark a task of this project done, once the work on it is finished.', inputSchema: { type: 'object', required: ['id'], properties: { id: str('The task id.') } } },

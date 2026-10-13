@@ -4,6 +4,7 @@ import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Activity, type Agent } from '../../connection';
 import { Avatar } from '../../avatar';
 import { Face } from '../../face';
+import { TagList } from '../../taglist';
 import { Btn, Check, Empty, Field, Header, Reaching, Screen, StatusLine, Txt, Waiting, styles } from '../../ui';
 
 const STATE: Record<Activity, { glyph: string; tone: 'ghost' | 'signal' | 'amber' | 'raspberry'; label: string }> = {
@@ -118,6 +119,7 @@ export default function ProjectScreen() {
               ) : (
                 <StartAgent projectId={id} />
               )}
+              <TagList projectId={id} />
               {project?.lan !== undefined && (
                 <View style={[styles.row, { paddingVertical: 8 }]}>
                   <Check label="Let agents reach devices on your home network" value={project.lan} onChange={(allow) => post({ type: 'set_lan', projectId: id, allow })} />

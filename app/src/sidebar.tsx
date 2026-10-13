@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useConnection, type Agent } from './connection';
 import { Avatar } from './avatar';
+import { TagList } from './taglist';
 import { color, gutter, tap } from './theme';
 import { Btn, StatusLine, Txt, styles as ui } from './ui';
 
@@ -78,6 +79,7 @@ export function Sidebar() {
             <Pressable onPress={() => router.navigate('/tasks')} accessibilityRole="link" accessibilityState={{ selected: path.startsWith('/task') }} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [local.project, (path.startsWith('/task') || hovered) && local.lit, path.startsWith('/task') && local.here, pressed && { opacity: 0.6 }]}>
               <Txt tone="ghost" numberOfLines={1}>Tasks{tasks.some((t) => t.state !== 'done') ? ` (${tasks.filter((t) => t.state !== 'done').length})` : ''}</Txt>
             </Pressable>
+            <TagList />
             <Pressable onPress={() => router.navigate('/memory')} accessibilityRole="link" accessibilityState={{ selected: path.startsWith('/memory') }} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [local.project, (path.startsWith('/memory') || hovered) && local.lit, path.startsWith('/memory') && local.here, pressed && { opacity: 0.6 }]}>
               <Txt tone={memories.some((m) => m.pending) ? 'amber' : 'ghost'} numberOfLines={1}>Memory{memories.some((m) => m.pending) ? ' (suggestions)' : ''}</Txt>
             </Pressable>

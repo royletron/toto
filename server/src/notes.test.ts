@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { LIMITS, openMemories } from './memory.ts';
-import { openTasks, LIMITS as TASKS } from './tasks.ts';
+import { TAG_COLORS as OFFERED } from '../../app/src/tagcolors.ts';
+import { openTasks, LIMITS as TASKS, TAG_COLORS } from './tasks.ts';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'toto-notes-'));
 const you = { by: 'you' } as const;
@@ -86,4 +87,43 @@ test('tasks refuse what is not one, and too many', () => {
   assert.throws(() => t.addFile(one.id, Buffer.alloc(0), 'empty'), /files|empty/);
   assert.ok(t.remove(one.id));
   assert.ok(!t.remove(one.id));
+});
+
+test('tasks carry tags: cleaned, never twice, coloured from the name unless someone chooses, renamed and deleted everywhere', () => {
+  const root = dir();
+  const t = openTasks(join(root, 't.json'), join(root, 'task-files'));
+  const a = t.create({ title: 'a', description: '', projectId: 'p', tags: ['  Bug ', 'bug', 'CI  flaky'] }, 'you');
+  assert.deepEqual(a.tags, ['bug', 'ci flaky']);
+  const b = t.create({ title: 'b', description: '', projectId: 'p', tags: ['bug', 'docs'] }, 'agent');
+  assert.deepEqual(t.create({ title: 'old', description: '', projectId: 'p' }, 'you').tags, []);
+  assert.deepEqual(t.tags().map((x) => x.name), ['bug', 'ci flaky', 'docs']);
+  // A colour made up from the name: the same each time, from the palette, and never amber.
+  const [bug] = t.tags();
+  assert.equal(openTasks(join(root, 't.json'), join(root, 'task-files')).tags()[0].color, bug.color);
+  assert.ok(TAG_COLORS.includes(bug.color) && !TAG_COLORS.some((c) => c.toLowerCase() === '#ffb000'));
+  // Chosen, kept across a restart, and back to made-up when cleared.
+  t.setColor('Bug', '#112233');
+  assert.equal(t.tags()[0].color, '#112233');
+  assert.equal(openTasks(join(root, 't.json'), join(root, 'task-files')).tags()[0].color, '#112233');
+  for (const bad of ['red', '#12345', '#FFB000', 5]) assert.throws(() => t.setColor('bug', bad), /colour|Amber/, String(bad));
+  t.setColor('bug');
+  assert.equal(t.tags()[0].color, bug.color);
+  // Editing leaves tags alone unless given; giving them replaces them.
+  assert.deepEqual(t.edit(b.id, { title: 'b2' }).tags, ['bug', 'docs']);
+  assert.deepEqual(t.edit(b.id, { tags: ['docs'] }).tags, ['docs']);
+  assert.throws(() => t.edit(b.id, { tags: 'docs' }), /list/);
+  assert.throws(() => t.edit(b.id, { tags: [''] }), /1 to 24/);
+  assert.throws(() => t.edit(b.id, { tags: Array.from({ length: 9 }, (_, i) => `t${i}`) }), /up to 8/);
+  assert.throws(() => t.edit(b.id, { tags: ['x'.repeat(25)] }), /1 to 24/);
+  // Renaming onto an existing tag joins them, and takes the colour with it where there is none.
+  t.setColor('docs', '#445566');
+  t.renameTag('docs', 'bug');
+  assert.deepEqual(t.get(b.id)!.tags, ['bug']);
+  assert.equal(t.tags().find((x) => x.name === 'bug')!.color, '#445566');
+  t.deleteTag('bug');
+  assert.deepEqual(t.list().flatMap((x) => x.tags ?? []), ['ci flaky']);
+});
+
+test('the colours the app offers for a tag are the ones the Toto makes them up from', () => {
+  assert.deepEqual(OFFERED, TAG_COLORS);
 });

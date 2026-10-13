@@ -4,7 +4,8 @@ import { Alert, ScrollView, View } from 'react-native';
 import { chooseFile } from '../../attach';
 import { useConnection, type Task, type TaskState } from '../../connection';
 import { Files } from '../../files';
-import { Choice, Writing, ago, projectName } from '../../notes';
+import { TAG_COLORS } from '../../tagcolors';
+import { Choice, TagChip, Writing, ago, projectName } from '../../notes';
 import { gutter } from '../../theme';
 import { Btn, Field, Header, Rule, Screen, Txt, styles } from '../../ui';
 
@@ -32,7 +33,7 @@ export default function TaskScreen() {
 }
 
 function Form({ task, startIn }: { task?: Task; startIn?: string }) {
-  const { projects, agents, post, attachFile, status } = useConnection();
+  const { projects, agents, tags: known, post, attachFile, status } = useConnection();
   const router = useRouter();
   const online = status === 'open';
   const [title, setTitle] = useState(task?.title ?? '');
@@ -40,13 +41,22 @@ function Form({ task, startIn }: { task?: Task; startIn?: string }) {
   const [state, setState] = useState<TaskState>(task?.state ?? 'open');
   const [project, setProject] = useState<string | undefined>(task?.projectId ?? startIn ?? projects[0]?.id);
   const [agent, setAgent] = useState<string | undefined>(task?.agentId);
+  const [tags, setTags] = useState<string[]>(task?.tags ?? []);
+  const [newTag, setNewTag] = useState('');
   const [giving, setGiving] = useState(false);
   const [adding, setAdding] = useState(false);
 
   const here = agents.filter((a) => a.projectId === project);
+  const colorOf = (name: string) => known.find((t) => t.name === name)?.color ?? TAG_COLORS[10];
+  // The same cleaning the Toto does: one tag is up to 24 characters, in lower case, and a task has up to 8.
+  const addTag = (name: string) => {
+    const tag = name.trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 24);
+    if (tag && !tags.includes(tag) && tags.length < 8) setTags([...tags, tag]);
+    setNewTag('');
+  };
   const save = () => {
     if (!project) return;
-    post({ type: 'task_save', id: task?.id, title, description, projectId: project, agentId: agent, state });
+    post({ type: 'task_save', id: task?.id, title, description, projectId: project, agentId: agent, state, tags });
     router.back();
   };
   const remove = () =>
@@ -94,6 +104,29 @@ function Form({ task, startIn }: { task?: Task; startIn?: string }) {
           }}
         />
         <Choice label="agent" options={[{ value: '', label: 'nobody' }, ...here.map((a) => ({ value: a.id, label: a.name }))]} value={agent ?? ''} onChange={(a) => setAgent(a || undefined)} />
+        <View style={{ gap: 8, paddingVertical: 8 }}>
+          <Txt tone="ghost" small>tags</Txt>
+          {tags.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {tags.map((name) => (
+                <TagChip key={name} name={name} color={colorOf(name)} onRemove={() => setTags(tags.filter((t) => t !== name))} />
+              ))}
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Field label="new" value={newTag} onChangeText={setNewTag} onSubmitEditing={() => addTag(newTag)} placeholder="a tag, like bug" returnKeyType="done" />
+            </View>
+            <Btn label="Add" onPress={() => addTag(newTag)} disabled={!newTag.trim() || tags.length >= 8} style={{ minHeight: 36, paddingHorizontal: 12 }} />
+          </View>
+          {known.some((t) => !tags.includes(t.name)) && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {known.filter((t) => !tags.includes(t.name)).map((t) => (
+                <TagChip key={t.name} name={t.name} color={t.color} onPress={() => addTag(t.name)} />
+              ))}
+            </View>
+          )}
+        </View>
         {!!task && <Txt tone="ghost" small style={{ paddingVertical: 8 }}>Raised {task.by === 'agent' ? 'by an agent' : 'by you'} in {projectName(projects, task.projectId)}, {ago(task.created)}. Changed {ago(task.updated)}.</Txt>}
 
         {!!task && (

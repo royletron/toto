@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Task } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Tag, Task } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -10,7 +10,7 @@ import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Flag, Memory, MemoryLayer, Mode, Plugin, Progress, Project, Task, TaskState, TermKey } from '../../protocol';
+export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Flag, Memory, MemoryLayer, Mode, Plugin, Progress, Project, Tag, Task, TaskState, TermKey } from '../../protocol';
 export type { Settings } from './link';
 export type { Invitation, Invite } from './invite';
 
@@ -80,6 +80,8 @@ type Connection = {
   /** What this Toto has been asked to remember, at every layer, and everything on its task list. Empty until it has said. */
   memories: Memory[];
   tasks: Task[];
+  /** Every tag in use, with its colour. */
+  tags: Tag[];
   /** This Toto keeps memories and tasks at all: false for one too old to, which has nothing to show. */
   notes: boolean;
   /** Attaches a file, as base64, to a task: sent in pieces small enough for the relay. */
@@ -206,6 +208,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [flags, setFlags] = useState<Flag[]>();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [notes, setNotes] = useState(false);
   const [live, setLive] = useState<Connection['live']>({});
   const [queued, setQueued] = useState<Connection['queued']>({});
@@ -282,6 +285,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       case 'tasks':
         setNotes(true);
         setTasks(msg.items);
+        break;
+      case 'tags':
+        setTags(msg.items);
         break;
       case 'queue':
         setQueued((all) => ({ ...all, [msg.agentId]: msg.items }));
@@ -424,6 +430,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setQueued({});
     setMemories([]);
     setTasks([]);
+    setTags([]);
     setNotes(false);
     setPluginLogin(undefined);
     setSoftware(undefined);
@@ -575,7 +582,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, notes, attachFile, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );

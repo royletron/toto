@@ -4,13 +4,39 @@
 // ponytail: held in memory and capped, like the memories; move to a database if people keep thousands.
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import type { FileRef, Task, TaskState } from '../../protocol.ts';
+import type { FileRef, Tag, Task, TaskState } from '../../protocol.ts';
 import { dropFile, dropFiles, readFile, saveFile } from './images.ts';
 
-export const LIMITS = { title: 120, description: 8000, total: 500, files: 10 };
+export const LIMITS = { title: 120, description: 8000, total: 500, files: 10, tags: 8, tagName: 24 };
 const STATES: TaskState[] = ['open', 'working', 'done'];
 
-export type TaskInput = { title: unknown; description: unknown; projectId: string; agentId?: string; state?: unknown };
+export type TaskInput = { title: unknown; description: unknown; projectId: string; agentId?: string; state?: unknown; tags?: unknown };
+
+// The colours tags are given when nobody has chosen: the app's own palette, less amber, which means "waiting on you".
+export const TAG_COLORS = ['#8BD45F', '#7FC8E8', '#F25C82', '#B79CED', '#F2A07B', '#5FD4C0', '#6FA8F7', '#E58BD9', '#B8D86B', '#ECE6D2', '#959B85'];
+const AMBER = '#ffb000';
+
+/** One tag as it is kept: trimmed, spaces made single, lower case. Throws what is wrong with it. */
+export function cleanTag(name: unknown): string {
+  const tag = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  if (!tag || tag.length > LIMITS.tagName) throw new Error(`A tag is 1 to ${LIMITS.tagName} characters.`);
+  return tag;
+}
+
+/** A list of tags as it is kept: each cleaned, none twice, no more than a task may have. Throws what is wrong with it. */
+export function cleanTags(names: unknown): string[] {
+  if (!Array.isArray(names)) throw new Error('Tags are a list of names.');
+  const tags = [...new Set(names.map(cleanTag))];
+  if (tags.length > LIMITS.tags) throw new Error(`A task has up to ${LIMITS.tags} tags.`);
+  return tags;
+}
+
+// A colour made up from a name, the same on every phone because it is made here.
+const colorFromName = (name: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 0x01000193);
+  return TAG_COLORS[(h >>> 0) % TAG_COLORS.length];
+};
 
 export function openTasks(file: string, filesRoot: string) {
   let items: Task[] = [];
@@ -22,6 +48,18 @@ export function openTasks(file: string, filesRoot: string) {
   const persist = () => {
     writeFileSync(`${file}.tmp`, JSON.stringify(items), { mode: 0o600 });
     renameSync(`${file}.tmp`, file);
+  };
+  // The colours people have chosen for tags, by name. The rest are made up.
+  const colorFile = file.replace(/\.json$/, '') + '.tags.json';
+  let chosen: Record<string, string> = {};
+  try {
+    if (existsSync(colorFile)) chosen = JSON.parse(readFileSync(colorFile, 'utf8'));
+  } catch {
+    // A damaged file is not worth stopping for.
+  }
+  const persistColors = () => {
+    writeFileSync(`${colorFile}.tmp`, JSON.stringify(chosen), { mode: 0o600 });
+    renameSync(`${colorFile}.tmp`, colorFile);
   };
   const find = (id: unknown) => items.find((t) => t.id === id);
   const need = (id: unknown) => {
@@ -54,6 +92,7 @@ export function openTasks(file: string, filesRoot: string) {
         updated: now,
         state: (input.state as TaskState | undefined) ?? 'open',
         files: [],
+        tags: input.tags === undefined ? [] : cleanTags(input.tags),
       };
       items = [...items, task];
       persist();
@@ -64,7 +103,7 @@ export function openTasks(file: string, filesRoot: string) {
     update(id: string, input: TaskInput): Task {
       const was = need(id);
       check(input);
-      const task: Task = { ...was, title: (input.title as string).trim(), description: (input.description as string).trim(), projectId: input.projectId, state: (input.state as TaskState | undefined) ?? was.state, updated: Date.now() };
+      const task: Task = { ...was, title: (input.title as string).trim(), description: (input.description as string).trim(), projectId: input.projectId, state: (input.state as TaskState | undefined) ?? was.state, tags: input.tags === undefined ? (was.tags ?? []) : cleanTags(input.tags), updated: Date.now() };
       if (input.agentId) task.agentId = input.agentId;
       else delete task.agentId;
       items = items.map((t) => (t === was ? task : t));
@@ -73,9 +112,9 @@ export function openTasks(file: string, filesRoot: string) {
     },
 
     /** Changes some of a task and leaves the rest as it was. */
-    edit(id: string, patch: { title?: unknown; description?: unknown; state?: unknown }): Task {
+    edit(id: string, patch: { title?: unknown; description?: unknown; state?: unknown; tags?: unknown }): Task {
       const was = need(id);
-      return this.update(id, { title: patch.title ?? was.title, description: patch.description ?? was.description, projectId: was.projectId, agentId: was.agentId, state: patch.state ?? was.state });
+      return this.update(id, { title: patch.title ?? was.title, description: patch.description ?? was.description, projectId: was.projectId, agentId: was.agentId, state: patch.state ?? was.state, tags: patch.tags });
     },
 
     /** Marks a task done, working or open without touching anything else. */
@@ -118,6 +157,43 @@ export function openTasks(file: string, filesRoot: string) {
     },
 
     readFile: (taskId: unknown, id: unknown) => readFile(taskId, id, filesRoot),
+
+    /** Every tag on any task, with its colour: the one chosen for it, or one made up from its name. */
+    tags(): Tag[] {
+      const names = [...new Set(items.flatMap((t) => t.tags ?? []))].sort();
+      return names.map((name) => ({ name, color: chosen[name] ?? colorFromName(name) }));
+    },
+
+    /** Chooses a tag's colour (a #rrggbb), or with none goes back to the one made up from its name. */
+    setColor(name: unknown, color?: unknown) {
+      const tag = cleanTag(name);
+      if (color === undefined) delete chosen[tag];
+      else if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error('A colour is six hex digits, like #8BD45F.');
+      else if (color.toLowerCase() === AMBER) throw new Error('Amber is for whatever is waiting on you, so it is not for a tag.');
+      else chosen[tag] = color.toUpperCase();
+      persistColors();
+    },
+
+    /** Renames a tag on every task. If there is a tag by the new name the two become one, with that one's colour. */
+    renameTag(name: unknown, to: unknown) {
+      const [from, next] = [cleanTag(name), cleanTag(to)];
+      if (from === next) return;
+      for (const t of items) if (t.tags?.includes(from)) t.tags = [...new Set(t.tags.map((x) => (x === from ? next : x)))];
+      // Its colour goes with it, unless the new name already has one.
+      if (chosen[from] && !chosen[next]) chosen[next] = chosen[from];
+      delete chosen[from];
+      persist();
+      persistColors();
+    },
+
+    /** Takes a tag off every task. */
+    deleteTag(name: unknown) {
+      const tag = cleanTag(name);
+      for (const t of items) if (t.tags?.includes(tag)) t.tags = t.tags.filter((x) => x !== tag);
+      delete chosen[tag];
+      persist();
+      persistColors();
+    },
 
     /** An agent is gone: what was its to do is nobody's, and still there. */
     unassign(agentId: string) {

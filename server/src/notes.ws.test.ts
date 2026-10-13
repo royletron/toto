@@ -86,6 +86,26 @@ test('memories and tasks, from the phone and from an agent', { timeout: 90_000 }
   phone.send({ type: 'task_delete', id: task.id });
   await until('the task to go', () => itemsOf('tasks').length === 0);
 
+  // Tags: given when a task is saved, coloured by the Toto, chosen, renamed and deleted from the phone,
+  // and set by an agent when it raises or edits a task.
+  phone.send({ type: 'task_save', title: 'Tagged', description: '', projectId: project.id, state: 'open', tags: ['Bug', 'ci'] });
+  await until('the tags', () => itemsOf('tags').map((t: any) => t.name).join() === 'bug,ci');
+  assert.ok(itemsOf('tags').every((t: any) => /^#[0-9A-F]{6}$/.test(t.color)));
+  phone.send({ type: 'tag_color', name: 'bug', color: '#102030' });
+  await until('the colour', () => itemsOf('tags')[0].color === '#102030');
+  phone.send({ type: 'tag_color', name: 'bug', color: 'red' });
+  assert.match((await phone.next('failed')).message, /six hex digits/);
+  assert.match((await post('raise_task', { title: 'By an agent', tags: ['docs'] })).text, /Raised task/);
+  await until('the agent\'s tag', () => itemsOf('tags').some((t: any) => t.name === 'docs'));
+  assert.match((await post('list_tasks', {})).text, /#docs/);
+  phone.send({ type: 'tag_rename', name: 'ci', to: 'build' });
+  await until('the rename', () => itemsOf('tags').some((t: any) => t.name === 'build') && !itemsOf('tags').some((t: any) => t.name === 'ci'));
+  phone.send({ type: 'tag_delete', name: 'bug' });
+  await until('the delete', () => !itemsOf('tags').some((t: any) => t.name === 'bug'));
+  assert.ok(itemsOf('tasks').every((t: any) => !(t.tags ?? []).includes('bug')));
+  for (const t of itemsOf('tasks')) phone.send({ type: 'task_delete', id: t.id });
+  await until('the tasks to go', () => itemsOf('tasks').length === 0);
+
   // Deleting the agent takes its own memories and leaves a task nobody is on.
   phone.send({ type: 'task_save', title: 'Orphan', description: '', projectId: project.id, agentId: agent.id, state: 'open' });
   phone.send({ type: 'memory_save', layer: 'agent', scope: agent.id, title: 'Mine', body: 'x' });

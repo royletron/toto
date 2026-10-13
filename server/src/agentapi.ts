@@ -87,7 +87,7 @@ export async function call(who: Who, route: string, args: any, deps: Deps): Prom
       return text('Forgotten.');
     }
     case 'raise_task': {
-      const task = tasks.create({ title: args?.title, description: args?.description ?? '', projectId: who.projectId, agentId: who.agentId }, 'agent');
+      const task = tasks.create({ title: args?.title, description: args?.description ?? '', projectId: who.projectId, agentId: who.agentId, tags: args?.tags }, 'agent');
       const missed = await attach(task.id, who, args?.files, deps);
       deps.changed('tasks');
       return text(`Raised task ${task.id}.${missed}`);
@@ -95,14 +95,14 @@ export async function call(who: Who, route: string, args: any, deps: Deps): Prom
     case 'update_task': {
       const was = tasks.get(args?.id);
       if (!was || was.projectId !== who.projectId) throw new Error('There is no such task in this project.');
-      const task = tasks.edit(was.id, { title: args?.title, description: args?.description, state: args?.state });
+      const task = tasks.edit(was.id, { title: args?.title, description: args?.description, state: args?.state, tags: args?.tags });
       const missed = await attach(task.id, who, args?.files, deps);
       deps.changed('tasks');
       return text(`Updated task ${task.id}.${missed}`);
     }
     case 'list_tasks': {
       const open = tasks.list().filter((t) => t.projectId === who.projectId && t.state !== 'done');
-      return text(open.length ? open.slice(0, 50).map((t: Task) => `${t.id} [${t.state}] ${t.title}${t.files.length ? ` (${t.files.length} file${t.files.length === 1 ? '' : 's'})` : ''}${t.description ? `\n  ${clip(t.description, 300).replaceAll('\n', '\n  ')}` : ''}`).join('\n') : 'No open tasks in this project.');
+      return text(open.length ? open.slice(0, 50).map((t: Task) => `${t.id} [${t.state}] ${t.title}${t.tags?.length ? ` #${t.tags.join(' #')}` : ''}${t.files.length ? ` (${t.files.length} file${t.files.length === 1 ? '' : 's'})` : ''}${t.description ? `\n  ${clip(t.description, 300).replaceAll('\n', '\n  ')}` : ''}`).join('\n') : 'No open tasks in this project.');
     }
     case 'done_task': {
       const task = tasks.get(args?.id);

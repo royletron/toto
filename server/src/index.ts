@@ -295,7 +295,10 @@ function sayNext(agent: AgentRecord) {
 }
 
 const tellMemories = () => broadcast({ type: 'memories', items: memories.list() });
-const tellTasks = () => broadcast({ type: 'tasks', items: tasks.list() });
+const tellTasks = () => {
+  broadcast({ type: 'tasks', items: tasks.list() });
+  broadcast({ type: 'tags', items: tasks.tags() });
+};
 
 /** Gives an agent a task to work on: said now, or when its turn ends if it is partway through one. */
 function giveTask(agent: AgentRecord, task: ReturnType<typeof tasks.list>[number]) {
@@ -467,6 +470,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
       send(ws, { type: 'memories', items: memories.list() });
       send(ws, { type: 'tasks', items: tasks.list() });
+      send(ws, { type: 'tags', items: tasks.tags() });
       for (const [agentId, items] of queues) if (items.length) send(ws, { type: 'queue', agentId, items: items.map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
       return send(ws, { type: 'synced' });
     case 'ping':
@@ -718,11 +722,20 @@ async function handle(msg: ClientMessage, ws: Client) {
       const worker = msg.agentId ? state.agents.find((a) => a.id === msg.agentId) : undefined;
       if (!project) throw new Error('That project is not there any more.');
       if (msg.agentId && worker?.projectId !== project.id) throw new Error('That agent does not work in that project.');
-      const input = { title: msg.title, description: msg.description, projectId: project.id, agentId: worker?.id, state: msg.state };
+      const input = { title: msg.title, description: msg.description, projectId: project.id, agentId: worker?.id, state: msg.state, tags: msg.tags };
       if (typeof msg.id === 'string') tasks.update(msg.id, input);
       else tasks.create(input, 'you');
       return tellTasks();
     }
+    case 'tag_color':
+      tasks.setColor(msg.name, msg.color);
+      return tellTasks();
+    case 'tag_rename':
+      tasks.renameTag(msg.name, msg.to);
+      return tellTasks();
+    case 'tag_delete':
+      tasks.deleteTag(msg.name);
+      return tellTasks();
     case 'task_delete':
       tasks.remove(msg.id);
       return tellTasks();

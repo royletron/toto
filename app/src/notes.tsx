@@ -1,5 +1,5 @@
 // Small things the memory and task screens share.
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import type { Agent, Project } from './connection';
 import { color, font, gutter, size } from './theme';
 import { Btn, Txt } from './ui';
@@ -56,4 +56,31 @@ export function Writing({ label, value, onChangeText, placeholder }: { label: st
 
 const local = StyleSheet.create({
   box: { minHeight: 140, maxHeight: 360, padding: 10, color: color.phosphor, fontFamily: font.regular, fontSize: size.body, borderWidth: 1, borderColor: color.rule, borderRadius: 2, paddingHorizontal: gutter - 6 },
+});
+
+/** A tag as a small chip: its colour, and its name. With `onRemove` it can be taken off. */
+export function TagChip({ name, color, onPress, onRemove, selected }: { name: string; color: string; onPress?: () => void; onRemove?: () => void; selected?: boolean }) {
+  const body = (
+    <View style={[chip.pill, selected && { borderColor: color }]}>
+      <View style={[chip.dot, { backgroundColor: color }]} />
+      <Txt small weight={selected ? 'bold' : 'regular'}>{name}</Txt>
+      {onRemove && (
+        <Pressable onPress={onRemove} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Take off ${name}`}>
+          <Txt small tone="ghost" weight="bold">x</Txt>
+        </Pressable>
+      )}
+    </View>
+  );
+  return onPress ? (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!selected }} accessibilityLabel={`Tag ${name}`} style={({ pressed }) => pressed && { opacity: 0.6 }}>
+      {body}
+    </Pressable>
+  ) : (
+    body
+  );
+}
+
+const chip = StyleSheet.create({
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: color.rule, borderRadius: 12 },
+  dot: { width: 9, height: 9, borderRadius: 5 },
 });
