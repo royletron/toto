@@ -33,6 +33,7 @@ install -m 755 "$src/bin/toto-priv" /opt/toto/bin/toto-priv
 install -m 755 "$src/bin/toto-firstboot" /opt/toto/bin/toto-firstboot
 # The updater, and the public half of the key a release must be signed with. Root's, like the helper.
 install -m 755 "$src/bin/toto-update.mjs" /opt/toto/bin/toto-update.mjs
+install -m 755 "$src/bin/toto-screen" /opt/toto/bin/toto-screen
 install -m 755 "$src/bin/toto-progress.mjs" /opt/toto/bin/toto-progress.mjs
 install -m 644 "$src/release.pub" /opt/toto/release.pub
 # Plugins: the installer, the key their bundles must be signed with, and where they are put.
@@ -113,6 +114,8 @@ systemctl restart toto
 echo
 echo "Toto is running at ws://$(hostname).local:7860"
 echo "Token: $(grep '^TOTO_TOKEN=' /etc/toto.env | cut -d= -f2)"
+echo "To see these again, with a code to scan: sudo toto login"
+echo "To put Toto's screen on this machine's display, in place of a login: sudo toto screen on"
 if ! grep -qE '^(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)=.+' /etc/toto.env; then
   echo "Next: set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN in /etc/toto.env, then: sudo systemctl restart toto"
 fi

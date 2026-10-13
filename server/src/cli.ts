@@ -8,6 +8,7 @@
 //   toto name <new name>  rename this Toto
 //   toto wifi             choose a Wi-Fi network
 //   toto login            how to add this Toto in the app: address, token and a QR code
+//   toto screen on|off    put this screen on the machine's own display in place of a login, or take it away
 //
 // It talks to the running server over a local socket, so it needs to be run as root.
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -89,7 +90,8 @@ function describe(status: Status | undefined): string[] {
     lines.push(amber(`Pairing mode for another ${clock(status.pairingSeconds)}.`), 'On your phone, open the Toto app and choose "Find a new Toto nearby".');
   else if (!status.claimed) lines.push(amber('Not set up yet.'), 'On your phone, open the Toto app and choose "Find a new Toto nearby".');
   else lines.push(`This Toto has an owner. ${plural(status.phones, 'phone')} connected right now.`);
-  if (!status.bluetooth) lines.push(ghost('This machine has no Bluetooth, so it has to be added by address and token.'));
+  if (!status.bluetooth) lines.push(ghost('This machine has no Bluetooth, so it has to be added by address and token. Press l to see them.'));
+  else if (!status.claimed) lines.push(ghost('Or add it by address and token: press l.'));
   if (status.claimed) {
     lines.push(`${plural(status.agents, 'agent')} in ${plural(status.projects, 'project')}: ${status.running} working, ${status.waiting > 0 ? amber(`${status.waiting} waiting on you`) : '0 waiting on you'}.`);
     lines.push(ghost(status.relay ? `Reachable away from home through ${status.relay}` : 'No relay set, so it can only be reached on this network.'));
@@ -134,6 +136,31 @@ async function wifi() {
   console.log(joined.status === 0 ? `Joined ${choice.ssid}.` : raspberry((joined.stderr || 'Could not join that network.').trim()));
 }
 
+/** How to add this Toto in the app: its address, token and a code to scan. */
+async function login(): Promise<boolean> {
+  // The token is wherever this Toto keeps it: the environment (a container), or the file an install writes.
+  const dataDir = process.env.TOTO_DATA_DIR ?? '/var/lib/toto';
+  const envFile = process.env.TOTO_ENV_FILE ?? '/etc/toto.env';
+  const env = (name: string) => {
+    if (process.env[name]) return process.env[name];
+    try {
+      return new RegExp(`^${name}=(.*)$`, 'm').exec(readFileSync(envFile, 'utf8'))?.[1];
+    } catch {
+      return undefined; // there is no such file, or it is not for this user to read
+    }
+  };
+  const token = env('TOTO_TOKEN') ?? (existsSync(`${dataDir}/token`) ? readFileSync(`${dataDir}/token`, 'utf8').trim() : undefined);
+  if (!token) {
+    console.log(raspberry('This Toto has no token yet. Start it first.'));
+    return false;
+  }
+  const status = await ask({ cmd: 'status' });
+  const port = Number(env('TOTO_PORT')) || 7860;
+  const address = env('TOTO_ADDRESS') ?? (status?.ip ? `${status.ip}:${port}` : undefined);
+  console.log('\n' + loginLines({ name: status?.name ?? env('TOTO_NAME') ?? hostname(), token, port, address, relay: env('TOTO_RELAY_URL') || status?.relay || undefined }).map((l) => `  ${l}`).join('\n') + '\n');
+  return true;
+}
+
 /** The live screen. */
 async function screen() {
   const { stdin, stdout } = process;
@@ -154,7 +181,7 @@ async function screen() {
     const [top, bottom] = face(moodOf(status), Date.now() - started);
     const body = describe(status);
     const out = ['', '', `   ${top}  ${bold(status?.name ?? 'toto')}`, `   ${bottom}  ${body[0] ?? ''}`, ...body.slice(1).map((l) => `   ${l}`), '', ''];
-    const keys = [['p', status?.pairingSeconds ? 'stop pairing' : 'pairing mode'], ['w', 'Wi-Fi'], ['n', 'rename'], ['r', 'restart'], ['s', 'shell'], ['q', 'quit']];
+    const keys = [['p', status?.pairingSeconds ? 'stop pairing' : 'pairing mode'], ['l', 'login'], ['w', 'Wi-Fi'], ['n', 'rename'], ['r', 'restart'], ['s', 'shell'], ['q', 'quit']];
     out.push('   ' + keys.map(([k, what]) => `${amber(k)} ${what}`).join('   '));
     // Home, then each line cleared to its end as it is drawn, then everything below: no flicker.
     stdout.write('\x1b[H' + out.map((l) => l + '\x1b[K').join('\n') + '\x1b[J');
@@ -189,6 +216,7 @@ async function screen() {
     const k = key.toString().toLowerCase();
     if (k === 'q' || k === '\x03') return quit();
     if (k === 'p') status = await ask(status?.pairingSeconds ? { cmd: 'stop-pairing' } : { cmd: 'pair', minutes: 10 });
+    if (k === 'l') await aside(async () => void (await login()));
     if (k === 'w') await aside(wifi);
     if (k === 'n') await aside(async () => {
       const name = (await question('New name for this Toto: ')).trim();
@@ -214,22 +242,13 @@ else if (command === 'pair') {
   const status = await ask({ cmd: 'rename', name: rest.join(' ') });
   console.log(status ? `This Toto is now called ${status.name}.` : raspberry('The Toto service is not running, or this was not run as root.'));
 } else if (command === 'wifi') await wifi();
-else if (command === 'login') {
-  // The token is wherever this Toto keeps it: the environment (a container), or the file an install writes.
-  const dataDir = process.env.TOTO_DATA_DIR ?? '/var/lib/toto';
-  const env = (name: string) => {
-    if (process.env[name]) return process.env[name];
-    for (const file of ['/etc/toto.env']) if (existsSync(file)) return new RegExp(`^${name}=(.*)$`, 'm').exec(readFileSync(file, 'utf8'))?.[1];
-  };
-  const token = env('TOTO_TOKEN') ?? (existsSync(`${dataDir}/token`) ? readFileSync(`${dataDir}/token`, 'utf8').trim() : undefined);
-  if (!token) {
-    console.log(raspberry('This Toto has no token yet. Start it first.'));
-    process.exit(1);
+else if (command === 'login') process.exit((await login()) ? 0 : 1);
+else if (command === 'screen') {
+  if (!['on', 'off', 'status'].includes(rest[0] ?? 'status')) {
+    console.log('usage: toto screen on|off|status');
+    process.exit(2);
   }
-  const status = await ask({ cmd: 'status' });
-  const port = Number(env('TOTO_PORT')) || 7860;
-  const address = env('TOTO_ADDRESS') ?? (status?.ip ? `${status.ip}:${port}` : undefined);
-  console.log('\n' + loginLines({ name: status?.name ?? env('TOTO_NAME') ?? hostname(), token, port, address, relay: env('TOTO_RELAY_URL') || status?.relay || undefined }).map((l) => `  ${l}`).join('\n') + '\n');
+  spawnSync('/opt/toto/bin/toto-screen', [rest[0] ?? 'status'], { stdio: 'inherit' });
 }
 else if (!command || command === 'status') {
   const status = await ask({ cmd: 'status' });
@@ -237,6 +256,6 @@ else if (!command || command === 'status') {
   const body = describe(status);
   console.log([`\n   ${top}  ${bold(status?.name ?? 'toto')}`, `   ${bottom}  ${body[0] ?? ''}`, ...body.slice(1).map((l) => `   ${l}`), ''].join('\n'));
 } else {
-  console.log('usage: toto [status | pair [minutes|off] | name <new name> | wifi | login]');
+  console.log('usage: toto [status | pair [minutes|off] | name <new name> | wifi | login | screen on|off]');
   process.exit(2);
 }

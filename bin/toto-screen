@@ -1,0 +1,52 @@
+#!/bin/bash
+# Puts Toto's screen on this machine's own display in place of a login prompt, or takes it away:
+#   toto-screen on | off | status        (also: sudo toto screen on)
+# A Toto made from the image has it already. On a machine you installed Toto onto it is opt-in,
+# because it changes what the display shows.
+# Whoever is at the keyboard already has the machine in their hands, so the screen runs as root and
+# needs no password. Nothing here is reachable over the network. Run as root.
+# TOTO_ROOT is put in front of every path, to try it somewhere harmless (the tests do).
+set -euo pipefail
+
+R="${TOTO_ROOT:-}"
+USER_NAME=totoscreen
+SHELL_PATH=/usr/local/bin/toto-screen
+DROPIN="$R/etc/systemd/system/getty@tty1.service.d/zz-toto.conf"
+SUDOERS="$R/etc/sudoers.d/toto-screen"
+
+case "${1:-status}" in
+  on)
+    [ "$(id -u)" -eq 0 ] || [ -n "$R" ] || { echo "run with sudo" >&2; exit 1; }
+    id "$USER_NAME" >/dev/null 2>&1 || useradd --system --create-home --shell "$SHELL_PATH" "$USER_NAME"
+    install -d "$R/usr/local/bin" "$R/etc/sudoers.d" "$(dirname "$DROPIN")"
+    printf '#!/bin/sh\nexec sudo -n /usr/local/bin/toto\n' > "$R$SHELL_PATH"
+    chmod 755 "$R$SHELL_PATH"
+    grep -qx "$SHELL_PATH" "$R/etc/shells" 2>/dev/null || echo "$SHELL_PATH" >> "$R/etc/shells"
+    echo "$USER_NAME ALL=(root) NOPASSWD: /usr/local/bin/toto" > "$SUDOERS"
+    chmod 440 "$SUDOERS"
+    command -v visudo >/dev/null && visudo -cf "$SUDOERS" >/dev/null
+    # `zz-` so that it comes after, and so wins over, any login Raspberry Pi Imager set up for this display.
+    cat > "$DROPIN" <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin totoscreen --noclear %I $TERM
+EOF
+    systemctl daemon-reload 2>/dev/null || true
+    echo "Toto's screen will be on this machine's display from its next start. To have it now: sudo systemctl restart getty@tty1"
+    ;;
+  off)
+    [ "$(id -u)" -eq 0 ] || [ -n "$R" ] || { echo "run with sudo" >&2; exit 1; }
+    rm -f "$DROPIN" "$SUDOERS" "$R$SHELL_PATH"
+    [ -f "$R/etc/shells" ] && sed -i "\\#^$SHELL_PATH\$#d" "$R/etc/shells"
+    if id "$USER_NAME" >/dev/null 2>&1; then userdel --remove "$USER_NAME" 2>/dev/null || true; fi
+    systemctl daemon-reload 2>/dev/null || true
+    echo "The display shows a login again from its next start. To have it now: sudo systemctl restart getty@tty1"
+    ;;
+  status)
+    if [ -e "$DROPIN" ]; then echo "on: this machine's display shows Toto's screen"; else echo "off: this machine's display shows a login"; fi
+    ;;
+  *)
+    echo "usage: toto-screen on|off|status" >&2
+    exit 2
+    ;;
+esac

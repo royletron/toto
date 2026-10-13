@@ -10,22 +10,8 @@ chmod +x /usr/sbin/policy-rc.d
 
 /opt/toto-src/install.sh
 
-# --- The device's own display shows Toto's screen, not a login prompt.
-# Whoever is at the keyboard already has the machine in their hands, so the screen runs as root
-# and needs no password. Nothing here is reachable over the network.
-id totoscreen >/dev/null 2>&1 || useradd --system --create-home --shell /usr/local/bin/toto-screen totoscreen
-printf '#!/bin/sh\nexec sudo -n /usr/local/bin/toto\n' > /usr/local/bin/toto-screen
-chmod 755 /usr/local/bin/toto-screen
-grep -qx /usr/local/bin/toto-screen /etc/shells || echo /usr/local/bin/toto-screen >> /etc/shells
-echo 'totoscreen ALL=(root) NOPASSWD: /usr/local/bin/toto' > /etc/sudoers.d/toto-screen
-chmod 440 /etc/sudoers.d/toto-screen
-visudo -cf /etc/sudoers.d/toto-screen >/dev/null
-install -d /etc/systemd/system/getty@tty1.service.d
-cat > /etc/systemd/system/getty@tty1.service.d/zz-toto.conf <<'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin totoscreen --noclear %I $TERM
-EOF
+# --- The device's own display shows Toto's screen, not a login prompt (bin/toto-screen says how).
+/opt/toto/bin/toto-screen on
 
 # --- No first-boot questions. Stock Raspberry Pi OS stops to ask for a user name and password on
 # its display; a Toto is set up from a phone instead. (Presets made in Raspberry Pi Imager still apply.)

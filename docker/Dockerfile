@@ -26,7 +26,7 @@ RUN useradd --system --home-dir /var/lib/toto --no-create-home --shell /usr/sbin
  && install -d -m 755 /opt/toto/bin /var/lib/toto-plugins /etc/toto \
  && install -d -o toto -g toto -m 750 /run/toto
 
-COPY bin/toto-priv bin/toto-update.mjs bin/toto-plugin.mjs bin/toto-progress.mjs /opt/toto/bin/
+COPY bin/toto-priv bin/toto-update.mjs bin/toto-plugin.mjs bin/toto-progress.mjs bin/toto-screen /opt/toto/bin/
 COPY release.pub plugin.pub protocol.ts /opt/toto/
 COPY server /opt/toto/server
 RUN chmod 755 /opt/toto/bin/* \

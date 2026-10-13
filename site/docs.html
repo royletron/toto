@@ -118,13 +118,15 @@ sudo ./install.sh</pre>
 
   <section aria-labelledby="device">
     <h2 id="device">On the device itself</h2>
-    <p>Plug a display into a Toto made from the image and it shows a live screen instead of a login: its name, its network, whether it has an owner and what its agents are doing. From a keyboard, or over SSH on an ordinary install, the same tool is <code>toto</code>:</p>
+    <p>Plug a display into a Toto made from the image and it shows a live screen instead of a login: its dog, its name, its network, whether it has an owner and what its agents are doing. Press <b>l</b> on it for the address and token, and a code the app's camera can scan. On a machine you installed Toto onto yourself the display keeps its login until you ask for the screen: <code>sudo toto screen on</code>, then restart the console (<code>sudo systemctl restart getty@tty1</code>) or reboot. From a keyboard, or over SSH, the same tool is <code>toto</code>:</p>
     <pre class="block">sudo toto              <span class="c"># the live screen</span>
 sudo toto status       <span class="c"># the same, once</span>
+sudo toto login        <span class="c"># address, token and a code to scan</span>
 sudo toto pair         <span class="c"># pairing mode for ten minutes</span>
 sudo toto pair off
 sudo toto wifi         <span class="c"># choose a network</span>
-sudo toto name Workshop</pre>
+sudo toto name Workshop
+sudo toto screen on    <span class="c"># the screen on this machine's display (or off)</span></pre>
     <p>Pairing mode makes the Toto announce itself over Bluetooth again and lets a new phone set it up. It ends when a phone does, or when the time runs out.</p>
   </section>
 
