@@ -37,5 +37,7 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
-/ios
+# The ios project is generated. Only Xcode Cloud's scripts, which must sit beside it, are kept.
+/ios/*
+!/ios/ci_scripts/
 /android
