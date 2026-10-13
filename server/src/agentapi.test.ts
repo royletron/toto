@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { apiToken, call, sameToken, startAgentApi, type Deps, type Who } from './agentapi.ts';
+import { openDb } from './db.ts';
 import { openMemories } from './memory.ts';
 import { openTasks } from './tasks.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'toto-api-'));
-const memories = openMemories(join(root, 'm.json'));
-const tasks = openTasks(join(root, 't.json'), join(root, 'task-files'));
+const db = openDb(join(root, 'toto.db'));
+const memories = openMemories(db);
+const tasks = openTasks(db, join(root, 'task-files'));
 const alice: Who = { agentId: 'a1', projectId: 'p1' };
 const bob: Who = { agentId: 'b1', projectId: 'p2' };
 const told: string[] = [];

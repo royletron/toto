@@ -1,10 +1,8 @@
 // What this Toto has been asked to remember, at three layers: one agent, one project, or all of them.
-// Kept in one JSON file, written whole each time it changes.
-// ponytail: the file is read once and held in memory, and is small by the limits below. Move to a
-// database if people keep thousands.
+// Kept in the database (see db.ts), a row for each.
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import type { Memory, MemoryLayer } from '../../protocol.ts';
+import { type Db, transaction } from './db.ts';
 
 export const LIMITS = { title: 120, body: 8000, perScope: 200 };
 const LAYERS: MemoryLayer[] = ['node', 'project', 'agent'];
@@ -14,22 +12,30 @@ export type MemoryInput = { layer: unknown; scope?: unknown; title: unknown; bod
 /** Who is saving it: the person, or an agent, whose project is `projectId`. */
 export type Writer = { by: 'you' } | { by: 'agent'; agentId: string; projectId: string };
 
-export function openMemories(file: string) {
-  let items: Memory[] = [];
-  try {
-    if (existsSync(file)) items = JSON.parse(readFileSync(file, 'utf8'));
-  } catch {
-    // A damaged file is not worth stopping for; it starts again empty.
-  }
-  const persist = () => {
-    writeFileSync(`${file}.tmp`, JSON.stringify(items), { mode: 0o600 });
-    renameSync(`${file}.tmp`, file);
+type Row = { id: string; layer: string; scope: string | null; title: string; body: string; by: string; author: string | null; created: number; updated: number; pending: number };
+
+const toMemory = (r: Row): Memory => ({
+  id: r.id,
+  layer: r.layer as MemoryLayer,
+  ...(r.scope ? { scope: r.scope } : null),
+  title: r.title,
+  body: r.body,
+  by: r.by as 'you' | 'agent',
+  ...(r.author ? { author: r.author } : null),
+  created: r.created,
+  updated: r.updated,
+  ...(r.pending ? { pending: true } : null),
+});
+
+export function openMemories(db: Db) {
+  const find = (id: unknown): Memory | undefined => {
+    const row = typeof id === 'string' ? (db.prepare('SELECT * FROM memories WHERE id = ?').get(id) as Row | undefined) : undefined;
+    return row && toMemory(row);
   };
-  const find = (id: unknown) => items.find((m) => m.id === id);
-  const inScope = (layer: MemoryLayer, scope?: string) => items.filter((m) => m.layer === layer && m.scope === scope).length;
+  const inScope = (layer: string, scope: string | undefined) => (db.prepare('SELECT count(*) AS n FROM memories WHERE layer = ? AND scope IS ?').get(layer, scope ?? null) as { n: number }).n;
 
   return {
-    list: () => items,
+    list: (): Memory[] => (db.prepare('SELECT * FROM memories ORDER BY created, rowid').all() as Row[]).map(toMemory),
     get: find,
 
     /**
@@ -45,39 +51,31 @@ export function openMemories(file: string) {
       let scope = layer === 'node' ? undefined : input.scope;
       if (writer.by === 'agent') scope = layer === 'agent' ? writer.agentId : layer === 'project' ? writer.projectId : undefined;
       if (layer !== 'node' && (typeof scope !== 'string' || !scope)) throw new Error('Say which project or agent this memory is for.');
-      const was = id === undefined ? undefined : find(id);
-      if (id !== undefined && !was) throw new Error('That memory is not there any more.');
-      // An agent may only change what an agent of its own wrote, or it could rewrite your notes.
-      if (was && writer.by === 'agent' && !(was.by === 'agent' && was.author === writer.agentId)) throw new Error('That memory is not yours to change.');
-      const moved = !was || was.layer !== layer || was.scope !== scope;
-      if (moved && inScope(layer as MemoryLayer, scope as string | undefined) >= LIMITS.perScope) throw new Error(`That is as many memories as one place keeps (${LIMITS.perScope}). Delete some first.`);
-      const now = Date.now();
-      const author = was?.author ?? (writer.by === 'agent' ? writer.agentId : undefined);
-      const memory: Memory = {
-        id: was?.id ?? randomBytes(4).toString('hex'),
-        layer: layer as MemoryLayer,
-        ...(scope ? { scope: scope as string } : null),
-        title: title.trim(),
-        body: body.trim(),
-        by: was?.by ?? writer.by,
-        ...(author ? { author } : null),
-        created: was?.created ?? now,
-        updated: now,
+      return transaction(db, () => {
+        const was = id === undefined ? undefined : find(id);
+        if (id !== undefined && !was) throw new Error('That memory is not there any more.');
+        // An agent may only change what an agent of its own wrote, or it could rewrite your notes.
+        if (was && writer.by === 'agent' && !(was.by === 'agent' && was.author === writer.agentId)) throw new Error('That memory is not yours to change.');
+        const moved = !was || was.layer !== layer || was.scope !== scope;
+        if (moved && inScope(layer, scope as string | undefined) >= LIMITS.perScope) throw new Error(`That is as many memories as one place keeps (${LIMITS.perScope}). Delete some first.`);
+        const made = was?.id ?? randomBytes(4).toString('hex');
+        const now = Date.now();
+        const author = was?.author ?? (writer.by === 'agent' ? writer.agentId : undefined);
         // What an agent proposes for the whole Toto waits for you; anything you save is as good as accepted.
-        ...(writer.by === 'agent' && layer === 'node' ? { pending: true } : null),
-      };
-      items = was ? items.map((m) => (m === was ? memory : m)) : [...items, memory];
-      persist();
-      return memory;
+        const pending = writer.by === 'agent' && layer === 'node' ? 1 : 0;
+        if (was)
+          db.prepare('UPDATE memories SET layer = ?, scope = ?, title = ?, body = ?, pending = ?, updated = ? WHERE id = ?').run(layer, (scope as string | undefined) ?? null, title.trim(), body.trim(), pending, now, was.id);
+        else
+          db.prepare('INSERT INTO memories (id, layer, scope, title, body, by, author, created, updated, pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+            made, layer, (scope as string | undefined) ?? null, title.trim(), body.trim(), writer.by, author ?? null, now, now, pending,
+          );
+        return find(made)!;
+      });
     },
 
     /** Takes an agent's suggestion as it is. */
-    accept(id: unknown) {
-      const m = find(id);
-      if (!m?.pending) return false;
-      delete m.pending;
-      persist();
-      return true;
+    accept(id: unknown): boolean {
+      return typeof id === 'string' && Number(db.prepare('UPDATE memories SET pending = 0 WHERE id = ? AND pending = 1').run(id).changes) > 0;
     },
 
     /** Deletes one; an agent may only delete what it wrote itself. */
@@ -85,21 +83,20 @@ export function openMemories(file: string) {
       const m = find(id);
       if (!m) return false;
       if (writer.by === 'agent' && !(m.by === 'agent' && m.author === writer.agentId)) throw new Error('That memory is not yours to delete.');
-      items = items.filter((x) => x !== m);
-      persist();
+      db.prepare('DELETE FROM memories WHERE id = ?').run(m.id);
       return true;
     },
 
     /** Forgets everything kept for an agent or a project that is gone. */
     forget(scopes: string[]) {
-      const before = items.length;
-      items = items.filter((m) => !(m.scope && scopes.includes(m.scope)));
-      if (items.length !== before) persist();
+      if (scopes.length) db.prepare(`DELETE FROM memories WHERE scope IN (${scopes.map(() => '?').join(',')})`).run(...scopes);
     },
 
     /** What applies to an agent: the whole Toto's (once accepted), its project's, and its own. */
     forAgent(agentId: string, projectId: string): Memory[] {
-      return items.filter((m) => !m.pending && (m.layer === 'node' || (m.layer === 'project' && m.scope === projectId) || (m.layer === 'agent' && m.scope === agentId)));
+      return (
+        db.prepare("SELECT * FROM memories WHERE pending = 0 AND (layer = 'node' OR (layer = 'project' AND scope = ?) OR (layer = 'agent' AND scope = ?)) ORDER BY created, rowid").all(projectId, agentId) as Row[]
+      ).map(toMemory);
     },
   };
 }

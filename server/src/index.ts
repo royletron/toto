@@ -14,6 +14,8 @@ import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
 import { apiToken, sameToken, startAgentApi } from './agentapi.ts';
 import { describeFlags, setFlag } from './flags.ts';
+import { openDb, transaction } from './db.ts';
+import { importLegacy } from './legacy.ts';
 import { openMemories } from './memory.ts';
 import { openTasks } from './tasks.ts';
 import { readProgress } from './progress.ts';
@@ -88,8 +90,11 @@ const logFile = (agentId: string) => join(logDir, `${agentId}.jsonl`);
 // --- What agents are asked to remember, and what is left for later. Agents reach them through a small
 // server on the loopback address (see agentapi.ts); a project's agents carry its token, which is
 // derived from this device's and so is not stored.
-const memories = openMemories(join(dataDir, 'memories.json'));
-const tasks = openTasks(join(dataDir, 'tasks.json'), join(dataDir, 'task-files'));
+const db = openDb(join(dataDir, 'toto.db'));
+// Memories and tasks used to be JSON files: this brings in any that are still there, once.
+importLegacy(db, dataDir);
+const memories = openMemories(db);
+const tasks = openTasks(db, join(dataDir, 'task-files'));
 const API_PORT = Number(process.env.TOTO_API_PORT ?? 7861);
 const apiUrl = `http://127.0.0.1:${API_PORT}`;
 /** What a project's agents are given to call this device with. */
@@ -542,8 +547,11 @@ async function handle(msg: ClientMessage, ws: Client) {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project) return;
       // Out of state first, so nothing new can start in it while its files go.
-      memories.forget([project.id, ...state.agents.filter((a) => a.projectId === project.id).map((a) => a.id)]);
-      tasks.removeProject(project.id);
+      // Together, so a project is not half gone from the database if the server stops in between.
+      transaction(db, () => {
+        memories.forget([project.id, ...state.agents.filter((a) => a.projectId === project.id).map((a) => a.id)]);
+        tasks.removeProject(project.id);
+      });
       tellMemories();
       tellTasks();
       state.agents.filter((a) => a.projectId === project.id).forEach(forget);
@@ -554,8 +562,10 @@ async function handle(msg: ClientMessage, ws: Client) {
     }
     case 'delete_agent': {
       if (!agent) return;
-      memories.forget([agent.id]);
-      tasks.unassign(agent.id);
+      transaction(db, () => {
+        memories.forget([agent.id]);
+        tasks.unassign(agent.id);
+      });
       tellMemories();
       tellTasks();
       forget(agent);

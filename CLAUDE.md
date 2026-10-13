@@ -7,7 +7,7 @@ This repository is public. Never commit a hostname, address, token or network na
 ## Layout
 
 - `protocol.ts`: the messages app and server exchange. Types only, imported with `import type`.
-- `server/`: runs on the Toto as the unprivileged `toto` user. Node 24 running TypeScript directly (type stripping, so erasable syntax only: no enums, no parameter properties).
+- `server/`: runs on the Toto as the unprivileged `toto` user. Node 24 running TypeScript directly (type stripping, so erasable syntax only: no enums, no parameter properties). Records are in a SQLite file, `toto.db` in the data directory (`db.ts`): to change its layout, add a step to `MIGRATIONS` and never edit one that has shipped.
 - `bin/`: what runs as root. `toto-priv` (the only thing the server may `sudo`), `toto-update.mjs` (the updater), `toto-firstboot`.
 - `app/`: Expo and React Native. Read `app/AGENTS.md` first: fetch the Expo docs before using an Expo API.
 - `relay/`: a Cloudflare Worker with two Durable Objects (`Device`, `Stats`). It also serves `site/`.

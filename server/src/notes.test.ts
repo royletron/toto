@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { openDb } from './db.ts';
 import { LIMITS, openMemories } from './memory.ts';
 import { TAG_COLORS as OFFERED } from '../../app/src/tagcolors.ts';
 import { openTasks, LIMITS as TASKS, TAG_COLORS } from './tasks.ts';
@@ -12,8 +13,8 @@ const you = { by: 'you' } as const;
 const agent = { by: 'agent', agentId: 'a1', projectId: 'p1' } as const;
 
 test('memories live at three layers, and an agent writes only where it may', () => {
-  const file = join(dir(), 'm.json');
-  const m = openMemories(file);
+  const file = join(dir(), 'toto.db');
+  const m = openMemories(openDb(file));
   const node = m.save({ layer: 'node', title: 'Style', body: 'Plain verbs.' }, you);
   assert.equal(node.pending, undefined);
   // An agent's own and its project's are saved at once, whatever scope it names; the node's waits.
@@ -30,11 +31,11 @@ test('memories live at three layers, and an agent writes only where it may', () 
   assert.ok(m.forAgent('a1', 'p1').some((x) => x.title === 'For all'));
   assert.ok(!m.accept(node.id));
   // It all survives being opened again.
-  assert.equal(openMemories(file).list().length, 5);
+  assert.equal(openMemories(openDb(file)).list().length, 5);
 });
 
 test('a memory can be moved by saving it at another layer, and an agent cannot touch what is not its own', () => {
-  const m = openMemories(join(dir(), 'm.json'));
+  const m = openMemories(openDb(':memory:'));
   const a = m.save({ layer: 'agent', scope: 'a1', title: 'Note', body: 'x' }, you);
   const moved = m.save({ layer: 'project', scope: 'p1', title: 'Note', body: 'x' }, you, a.id);
   assert.deepEqual([moved.id, moved.layer, moved.scope, moved.created], [a.id, 'project', 'p1', a.created]);
@@ -47,7 +48,7 @@ test('a memory can be moved by saving it at another layer, and an agent cannot t
 });
 
 test('memories refuse what is not one, and keep to their limits', () => {
-  const m = openMemories(join(dir(), 'm.json'));
+  const m = openMemories(openDb(':memory:'));
   for (const bad of [{ layer: 'galaxy' }, { title: '' }, { title: 'x'.repeat(LIMITS.title + 1) }, { body: ' ' }, { body: 'x'.repeat(LIMITS.body + 1) }, { layer: 'project' }])
     assert.throws(() => m.save({ layer: 'node', title: 't', body: 'b', ...bad }, you), /memory|title|text|project/i, JSON.stringify(bad).slice(0, 40));
   for (let i = 0; i < LIMITS.perScope; i++) m.save({ layer: 'node', title: `n${i}`, body: 'b' }, you);
@@ -59,7 +60,7 @@ test('memories refuse what is not one, and keep to their limits', () => {
 
 test('tasks carry files, move between agents and projects, and go with their project', () => {
   const root = dir();
-  const t = openTasks(join(root, 't.json'), join(root, 'task-files'));
+  const t = openTasks(openDb(join(root, 'toto.db')), join(root, 'task-files'));
   const task = t.create({ title: 'Fix the flaky test', description: 'It fails on CI.', projectId: 'p1', agentId: 'a1' }, 'agent');
   assert.deepEqual([task.state, task.by, task.files], ['open', 'agent', []]);
   const file = t.addFile(task.id, Buffer.from('log lines'), '/var/log/ci.log');
@@ -79,7 +80,7 @@ test('tasks carry files, move between agents and projects, and go with their pro
 
 test('tasks refuse what is not one, and too many', () => {
   const root = dir();
-  const t = openTasks(join(root, 't.json'), join(root, 'task-files'));
+  const t = openTasks(openDb(join(root, 'toto.db')), join(root, 'task-files'));
   for (const bad of [{ title: '' }, { title: 'x'.repeat(TASKS.title + 1) }, { description: 5 }, { state: 'later' }]) assert.throws(() => t.create({ title: 't', description: '', projectId: 'p', ...bad }, 'you'), /task|title|open/i);
   const one = t.create({ title: 't', description: '', projectId: 'p' }, 'you');
   for (let i = 0; i < TASKS.files; i++) t.addFile(one.id, Buffer.from(`file ${i}`), `f${i}.txt`);
@@ -91,7 +92,7 @@ test('tasks refuse what is not one, and too many', () => {
 
 test('tasks carry tags: cleaned, never twice, coloured from the name unless someone chooses, renamed and deleted everywhere', () => {
   const root = dir();
-  const t = openTasks(join(root, 't.json'), join(root, 'task-files'));
+  const t = openTasks(openDb(join(root, 'toto.db')), join(root, 'task-files'));
   const a = t.create({ title: 'a', description: '', projectId: 'p', tags: ['  Bug ', 'bug', 'CI  flaky'] }, 'you');
   assert.deepEqual(a.tags, ['bug', 'ci flaky']);
   const b = t.create({ title: 'b', description: '', projectId: 'p', tags: ['bug', 'docs'] }, 'agent');
@@ -99,12 +100,12 @@ test('tasks carry tags: cleaned, never twice, coloured from the name unless some
   assert.deepEqual(t.tags().map((x) => x.name), ['bug', 'ci flaky', 'docs']);
   // A colour made up from the name: the same each time, from the palette, and never amber.
   const [bug] = t.tags();
-  assert.equal(openTasks(join(root, 't.json'), join(root, 'task-files')).tags()[0].color, bug.color);
+  assert.equal(openTasks(openDb(join(root, 'toto.db')), join(root, 'task-files')).tags()[0].color, bug.color);
   assert.ok(TAG_COLORS.includes(bug.color) && !TAG_COLORS.some((c) => c.toLowerCase() === '#ffb000'));
   // Chosen, kept across a restart, and back to made-up when cleared.
   t.setColor('Bug', '#112233');
   assert.equal(t.tags()[0].color, '#112233');
-  assert.equal(openTasks(join(root, 't.json'), join(root, 'task-files')).tags()[0].color, '#112233');
+  assert.equal(openTasks(openDb(join(root, 'toto.db')), join(root, 'task-files')).tags()[0].color, '#112233');
   for (const bad of ['red', '#12345', '#FFB000', 5]) assert.throws(() => t.setColor('bug', bad), /colour|Amber/, String(bad));
   t.setColor('bug');
   assert.equal(t.tags()[0].color, bug.color);

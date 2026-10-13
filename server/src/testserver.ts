@@ -9,9 +9,11 @@ import { keysFromToken, session } from './secure.ts';
 export type Line = { said: any[]; send: (m: object) => void; next: (type: string) => Promise<any>; ended: Promise<'refused' | 'closed'> };
 
 /** A real server, with its token `owner-token`, to be talked to as phones. It is stopped when the test file ends. */
-export function startServer(env: Record<string, string> = {}) {
+export function startServer(env: Record<string, string> = {}, seed?: (dataDir: string) => void) {
   const port = 20000 + Math.floor(Math.random() * 20000);
   const dataDir = mkdtempSync(join(tmpdir(), 'toto-test-'));
+  // What was in the data directory before this version, put there before the server starts.
+  seed?.(dataDir);
   const server = spawn(process.execPath, [new URL('./index.ts', import.meta.url).pathname], {
     env: { ...process.env, TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: dataDir, TOTO_RELAY_URL: '', ...env },
     stdio: 'ignore',
