@@ -64,6 +64,8 @@ A release reaches real devices as root. Before tagging, run the changed path on 
 
 The app's version is `expo.version` in `app/app.json`, and its releases are tagged `app-v1.2.3`. To release the Android app: bump that version, commit, push, then run `app/release.sh` on a machine with the Android SDK and an `eas login` (add `--play` to send it to Play's internal testing too). It builds locally, uploads the build to EAS and pushes the tag.
 
+The iOS app is built by Xcode Cloud from the same `app-v*` tag. Its workflow lives in App Store Connect, not here; what is here is `app/ios/ci_scripts/`, the only part of `ios/` in git. `ci_post_clone.sh` generates the project (and puts itself back, because prebuild in CI clears the folder), refuses a tag that is not app.json's version, and takes Xcode Cloud's build count as the build number. To try it: clone fresh, then `CI_TAG=app-v<version> CI_BUILD_NUMBER=1 sh app/ios/ci_scripts/ci_post_clone.sh`.
+
 **Never make a GitHub Release for an app tag.** Totos update from `releases/latest`, and the site reads it too; an app release there would be offered to every Toto as a server update and fail. Server tags are `v*`, app tags are `app-v*`, and the two workflows match on exactly those.
 
 ## Deploying the site and relay
