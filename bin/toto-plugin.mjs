@@ -88,8 +88,12 @@ export async function install(name, bundle, signature, { publicKey, dir = DIR, a
   }
 }
 
-const aptInstall = (steps) => (packages) =>
-  steps.run('Installing packages', 'apt-get', ['install', '-y', '--no-install-recommends', '--', ...packages], { DEBIAN_FRONTEND: 'noninteractive' });
+// A fresh install has no package lists (they are not shipped), so apt cannot find anything until it has updated.
+const aptInstall = (steps) => async (packages) => {
+  const env = { DEBIAN_FRONTEND: 'noninteractive' };
+  await steps.run('Updating package lists', 'apt-get', ['update'], env);
+  await steps.run('Installing packages', 'apt-get', ['install', '-y', '--no-install-recommends', '--', ...packages], env);
+};
 
 // Without install scripts: they would run as root, and are not covered by the plugin's signature.
 const npmInstall = (steps) => (packages) => steps.run('Installing packages', 'npm', ['install', '-g', '--ignore-scripts', '--no-audit', '--no-fund', '--', ...packages]);

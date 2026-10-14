@@ -190,7 +190,11 @@ async function checkForUpdate() {
   broadcast(snapshot());
 }
 const checkForPlugins = async () => {
-  offered = await listed();
+  const found = await listed();
+  const changed = JSON.stringify(found) !== JSON.stringify(offered);
+  offered = found;
+  // The first look finishes after the first app has connected, which would otherwise keep seeing none.
+  if (changed) broadcast(snapshot());
 };
 
 const snapshot = (): ServerMessage => ({
