@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Activity, type Agent } from '../../connection';
+import { agentName } from '../../names';
 import { Avatar } from '../../avatar';
 import { Face } from '../../face';
 import { TagList } from '../../taglist';
@@ -36,6 +37,8 @@ function StartAgent({ projectId }: { projectId: string }) {
   const { request, busy, status } = useConnection();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
+  // What it is called if the person does not say; a new one each time the form is opened.
+  const [suggested, setSuggested] = useState(agentName);
   const [worktree, setWorktree] = useState(true);
   const [auto, setAuto] = useState(false);
   const [terminal, setTerminal] = useState(false);
@@ -49,24 +52,24 @@ function StartAgent({ projectId }: { projectId: string }) {
     );
   if (!open)
     return (
-      <Pressable onPress={() => setOpen(true)} style={styles.row} accessibilityRole="button">
+      <Pressable onPress={() => { setSuggested(agentName()); setOpen(true); }} style={styles.row} accessibilityRole="button">
         <Txt tone="amber">+ Start an agent</Txt>
       </Pressable>
     );
   const start = () => {
-    request({ type: 'create_agent', projectId, name, harness: terminal ? 'terminal' : 'claude', worktree, mode: auto ? 'auto' : 'ask' });
+    request({ type: 'create_agent', projectId, name: name.trim() || suggested, harness: terminal ? 'terminal' : 'claude', worktree, mode: auto ? 'auto' : 'ask' });
     setName('');
     setOpen(false);
   };
   return (
     <View style={styles.form}>
-      <Field label="name" value={name} onChangeText={setName} placeholder="what to call it" autoFocus />
+      <Field label="name" value={name} onChangeText={setName} placeholder={suggested} autoFocus />
       <Check label="Own branch, so it cannot clash with other agents" value={worktree} onChange={setWorktree} />
       {/* ponytail: a checkbox while there are two kinds of agent; a picker when Codex and Gemini arrive. */}
       <Check label="Plain terminal, to run any tool by hand" value={terminal} onChange={setTerminal} />
       {!terminal && <Check label="Full auto: act without asking first" value={auto} onChange={setAuto} />}
       <View style={{ flexDirection: 'row', gap: 12, paddingTop: 12 }}>
-        <Btn kind="primary" label="Start it" onPress={start} disabled={busy || !name.trim()} style={{ flex: 1 }} />
+        <Btn kind="primary" label="Start it" onPress={start} disabled={busy} style={{ flex: 1 }} />
         <Btn label="Cancel" onPress={() => setOpen(false)} />
       </View>
     </View>

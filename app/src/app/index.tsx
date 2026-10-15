@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Project } from '../connection';
+import { repoName } from '../names';
 import { Face } from '../face';
 import { moodOfMany } from '../moods';
 import { Btn, Empty, Field, Header, Reaching, Screen, StatusLine, Txt, Waiting, styles, useWide } from '../ui';
@@ -75,18 +76,18 @@ function AddProject() {
       </Pressable>
     );
   const add = () => {
-    request({ type: 'create_project', name, repo });
+    request({ type: 'create_project', name: name.trim() || repoName(repo), repo });
     setName('');
     setRepo('');
     setOpen(false);
   };
   return (
     <View style={styles.form}>
-      <Field label="name" value={name} onChangeText={setName} placeholder="what to call it" autoFocus autoCapitalize="sentences" />
+      <Field label="name" value={name} onChangeText={setName} placeholder={repoName(repo) || 'what to call it'} autoFocus autoCapitalize="sentences" />
       <Field label="repo" value={repo} onChangeText={setRepo} placeholder="git@github.com:you/repo.git" />
       {!!sshKey && <Txt tone="ghost" small style={{ paddingTop: 8 }}>For a private repo, add this Toto&apos;s SSH key to your git host first. It is under device settings, on the bottom line.</Txt>}
       <View style={{ flexDirection: 'row', gap: 12, paddingTop: 12 }}>
-        <Btn kind="primary" label="Clone it" onPress={add} disabled={busy || !name.trim() || !repo.trim()} style={{ flex: 1 }} />
+        <Btn kind="primary" label="Clone it" onPress={add} disabled={busy || !(name.trim() || repoName(repo)) || !repo.trim()} style={{ flex: 1 }} />
         <Btn label="Cancel" onPress={() => setOpen(false)} />
       </View>
     </View>
