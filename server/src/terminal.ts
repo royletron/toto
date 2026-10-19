@@ -2,14 +2,19 @@ import { spawn } from 'node:child_process';
 import type { TermKey } from '../../protocol.ts';
 import { run, command } from './projects.ts';
 
-// A terminal agent is a tmux session owned by the project's user. tmux keeps it alive across
+// A project's terminal is a tmux session owned by the project's user, one per tab. tmux keeps it alive across
 // server restarts and with nobody watching, and is the terminal emulator: we send the app its
 // finished screen, colour codes included, each time the session prints something.
 //
 // ponytail: whole-screen snapshots, not a byte stream, so every update resends the screen and
 // very fast output is sampled at about 20 frames a second. A pty streamed to an emulator in the
 // app would be finer-grained; this needs no emulator and no native code on either side.
-const session = (agentId: string) => `toto-${agentId}`;
+// tmux is also the list of them: a session called toto-<project>-<tab>, so nothing is kept here
+// that could disagree with what is really running.
+const session = (projectId: string, id: string) => `toto-${projectId}-${id}`;
+
+/** A tab's id: chosen by the app when it opens one, so it is checked before going near tmux. */
+export const isTerminalId = (id: unknown): id is string => typeof id === 'string' && /^[a-z0-9]{1,16}$/.test(id);
 
 const NAMED: Record<string, string> = {
   enter: 'Enter', tab: 'Tab', escape: 'Escape', backspace: 'BSpace',
@@ -86,23 +91,43 @@ export function readFrame(frame: string): Screen {
   return { screen: lines.slice(0, last + 1).join('\n'), cursor: { row, col: x } };
 }
 
-type Where = { user?: string; cwd: string; agentId: string };
+type Where = { user?: string; cwd: string; projectId: string };
+
+/** The ids of a project's sessions, oldest first, out of `tmux list-sessions` lines of "created name". */
+export function terminalIds(projectId: string, listed: string) {
+  const prefix = session(projectId, '');
+  return listed
+    .split('\n')
+    .map((line) => line.split(' '))
+    .filter(([, name]) => name?.startsWith(prefix) && isTerminalId(name.slice(prefix.length)))
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, name]) => name.slice(prefix.length));
+}
+
+export const listTerminals = ({ user, cwd, projectId }: Where) =>
+  run(user, cwd, 'tmux', ['list-sessions', '-F', '#{session_created} #{session_name}']).then(({ stdout }) => terminalIds(projectId, stdout), () => []);
 
 /** Creates the session if it is not there, and fits it to the viewer's screen. */
-export const openTerminal = ({ user, cwd, agentId }: Where, cols: number, rows: number) =>
-  run(user, cwd, 'sh', ['-c', ENSURE, 'sh', session(agentId), String(cols), String(rows)]);
+export const openTerminal = ({ user, cwd, projectId }: Where, id: string, cols: number, rows: number) =>
+  run(user, cwd, 'sh', ['-c', ENSURE, 'sh', session(projectId, id), String(cols), String(rows)]);
 
-export const killTerminal = ({ user, cwd, agentId }: Where) =>
-  run(user, cwd, 'tmux', ['kill-session', '-t', session(agentId)]).catch(() => {});
+export const killTerminal = ({ user, cwd, projectId }: Where, id: string) =>
+  run(user, cwd, 'tmux', ['kill-session', '-t', session(projectId, id)]).catch(() => {});
+
+/** Gives a session made under an older name, `toto-<id>` for what used to be a terminal agent, its place as a tab. */
+export const adoptTerminal = ({ user, cwd, projectId }: Where, id: string) =>
+  run(user, cwd, 'tmux', ['rename-session', '-t', `toto-${id}`, session(projectId, id)]).catch(() => {});
 
 /**
  * Attaches to a session: `onScreen` is called with its screen each time it changes, `type` sends
- * it keystrokes, and `stop` lets go.
+ * it keystrokes, and `stop` lets go. `onEnd` is called once it has let go, for whatever reason.
  */
-export function watchTerminal({ user, cwd, agentId }: Where, onScreen: (screen: Screen) => void) {
-  const [file, args, opts] = command(user, cwd, 'sh', ['-c', SERVE, 'sh', session(agentId)]);
+export function watchTerminal({ user, cwd, projectId }: Where, id: string, onScreen: (screen: Screen) => void, onEnd: () => void) {
+  const [file, args, opts] = command(user, cwd, 'sh', ['-c', SERVE, 'sh', session(projectId, id)]);
   const child = spawn(file, args, { ...opts, stdio: ['pipe', 'pipe', 'ignore'] });
   child.on('error', () => {});
+  // Also when the shell in it exits, which ends the session: the tab is gone.
+  child.on('exit', onEnd);
   child.stdin.on('error', () => {}); // the session ended under a keystroke
   let buffer = '';
   let last: string | undefined;

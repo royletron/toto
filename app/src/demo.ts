@@ -22,10 +22,11 @@ const TERMINAL = ['\u001b[32mdemo@toto\u001b[0m:\u001b[34m~/webhooks\u001b[0m$ g
 export function demo(say: (message: ServerMessage) => void): (message: ClientMessage) => void {
   let name = DEMO_NODE.name;
   let projects: Project[] = [{ id: 'd0000001', name: 'webhooks', repo: 'git@github.com:example/webhooks.git', lan: false }];
+  // The demo project's terminals: one, already open.
+  let shells = ['demo'];
   let agents: Agent[] = [
     { id: 'a0000001', projectId: 'd0000001', name: 'backoff', harness: 'claude', mode: 'ask', worktree: true },
     { id: 'a0000002', projectId: 'd0000001', name: 'docs', harness: 'claude', mode: 'ask', worktree: true },
-    { id: 'a0000003', projectId: 'd0000001', name: 'shell', harness: 'terminal', mode: 'ask', worktree: false },
   ];
   const logs: Record<string, AgentEvent[]> = {
     a0000001: [
@@ -53,7 +54,6 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
       { type: 'text', text: 'I have added a **Retries** section to the README. It explains the queue, the backoff schedule and how to change the limit, with a short example.' },
       { type: 'done', isError: false },
     ],
-    a0000003: [],
   };
   // What it remembers and what is left for later, with one suggestion waiting for you.
   const now = Date.now();
@@ -198,8 +198,13 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
         return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] ?? [] });
       case 'approve':
         return decide(msg.agentId, msg.id, msg.allow);
+      case 'term_list':
+        return say({ type: 'terms', projectId: msg.projectId, ids: shells });
       case 'term_open':
-        return say({ type: 'term', agentId: msg.agentId, screen: TERMINAL, cursor: { row: 3, col: 22 } });
+        if (!shells.includes(msg.terminalId)) say({ type: 'terms', projectId: msg.projectId, ids: (shells = [...shells, msg.terminalId]) });
+        return say({ type: 'term', terminalId: msg.terminalId, screen: TERMINAL, cursor: { row: 3, col: 22 } });
+      case 'term_kill':
+        return say({ type: 'terms', projectId: msg.projectId, ids: (shells = shells.filter((t) => t !== msg.terminalId)) });
       case 'term_close':
       case 'term_input':
       case 'register_push':

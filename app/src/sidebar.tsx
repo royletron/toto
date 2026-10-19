@@ -21,17 +21,15 @@ export function Sidebar() {
   const agentRow = (agent: Agent) => {
     const here = path === `/agent/${agent.id}`;
     const state = activity[agent.id] ?? 'idle';
-    const terminal = agent.harness === 'terminal';
     return (
-      <Pressable key={agent.id} onPress={() => router.navigate({ pathname: '/agent/[id]', params: { id: agent.id } })} accessibilityRole="link" accessibilityState={{ selected: here }} accessibilityLabel={`${agent.name}, ${terminal ? 'terminal' : state}`} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [local.agent, (here || hovered) && local.lit, here && local.here, pressed && { opacity: 0.6 }]}>
-        <Avatar seed={agent.id} size={26} state={terminal ? undefined : state} />
+      <Pressable key={agent.id} onPress={() => router.navigate({ pathname: '/agent/[id]', params: { id: agent.id } })} accessibilityRole="link" accessibilityState={{ selected: here }} accessibilityLabel={`${agent.name}, ${state}`} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [local.agent, (here || hovered) && local.lit, here && local.here, pressed && { opacity: 0.6 }]}>
+        <Avatar seed={agent.id} size={26} state={state} />
         <Txt weight={here ? 'bold' : 'regular'} numberOfLines={1} style={{ flex: 1 }}>
           {agent.name}
-          {terminal && <Txt tone="ghost">{'  $'}</Txt>}
         </Txt>
-        {!terminal && state === 'waiting' && <Txt tone="amber" weight="bold" small>waiting</Txt>}
-        {!terminal && state === 'working' && <Txt tone="signal" small>working</Txt>}
-        {!terminal && state === 'failed' && <Txt tone="raspberry" small>stopped</Txt>}
+        {state === 'waiting' && <Txt tone="amber" weight="bold" small>waiting</Txt>}
+        {state === 'working' && <Txt tone="signal" small>working</Txt>}
+        {state === 'failed' && <Txt tone="raspberry" small>stopped</Txt>}
       </Pressable>
     );
   };

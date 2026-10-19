@@ -67,8 +67,8 @@ export type Mode = 'ask' | 'auto';
  */
 export type Project = { id: string; name: string; repo: string; lan?: boolean };
 
-/** 'claude' is a chat with Claude Code. 'terminal' is a shell session for running anything by hand. */
-export type Harness = 'claude' | 'terminal';
+/** 'claude' is a chat with Claude Code, the only kind there is. Shells are a project's terminals, not agents. */
+export type Harness = 'claude';
 
 /** `worktree` agents work on their own branch and checkout; the rest share the project's main checkout. */
 export type Agent = { id: string; projectId: string; name: string; harness: Harness; mode: Mode; worktree: boolean };
@@ -212,9 +212,16 @@ export type ServerMessage =
   | { type: 'event'; agentId: string; event: AgentEvent }
   // Sent once after `sync` has been answered in full; events after this are happening now.
   | { type: 'synced' }
-  // A terminal agent's screen, sent to clients that have it open: recent scrollback and the
+  // A terminal's screen, sent to clients that have it open: recent scrollback and the
   // visible rows, with ANSI colour and style codes left in, and where the cursor is within it.
-  | { type: 'term'; agentId: string; screen: string; cursor: { row: number; col: number } }
+  | { type: 'term'; terminalId: string; screen: string; cursor: { row: number; col: number } }
+  // What is typed into an agent's message box and not yet sent. `drafts` is every one, sent on `sync`
+  // (and saying this Toto keeps them); `draft` is one changed by another client.
+  | { type: 'drafts'; items: Record<string, string> }
+  | { type: 'draft'; agentId: string; text: string }
+  // A project's terminals, oldest first: the answer to `term_list`, and sent again to whoever has
+  // one of them open when one is opened or ends.
+  | { type: 'terms'; projectId: string; ids: string[] }
   // A request from this client could not be carried out.
   | { type: 'failed'; message: string };
 
@@ -299,8 +306,15 @@ export type ClientMessage =
   // several labels joined with ', ' when the question allows more than one.
   | { type: 'approve'; agentId: string; id: string; allow: boolean; answers?: Record<string, string> }
   | { type: 'set_mode'; agentId: string; mode: Mode }
-  // Start and stop receiving a terminal agent's screen. `cols` and `rows` are what fits the viewer.
-  | { type: 'term_open'; agentId: string; cols: number; rows: number }
-  | { type: 'term_close'; agentId: string }
+  // What is typed into an agent's message box so far, kept so it is there on coming back and on other phones.
+  | { type: 'draft'; agentId: string; text: string }
+  // A project has any number of terminals, each a tab. `term_list` asks which there are.
+  // `term_open` starts receiving one's screen, making it if there is none by that id (the app picks
+  // a new one, of up to 16 lowercase letters and digits). `cols` and `rows` are what fits the viewer.
+  | { type: 'term_list'; projectId: string }
+  | { type: 'term_open'; projectId: string; terminalId: string; cols: number; rows: number }
+  | { type: 'term_close'; terminalId: string }
+  // Ends a terminal and whatever is running in it.
+  | { type: 'term_kill'; projectId: string; terminalId: string }
   // Types `text`, then presses `key`, into a terminal this client has open. Sent per keystroke.
-  | { type: 'term_input'; agentId: string; text?: string; key?: TermKey };
+  | { type: 'term_input'; terminalId: string; text?: string; key?: TermKey };

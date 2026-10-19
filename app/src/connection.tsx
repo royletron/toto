@@ -111,8 +111,10 @@ type Connection = {
   activity: Record<string, Activity>;
   /** How many agents are in each state that matters at a glance. */
   tally: { working: number; waiting: number };
-  /** The screen of each terminal agent this device has open, by agent id. */
+  /** The screen of each terminal this device has open, by terminal id. */
   screens: Record<string, TermScreen>;
+  /** Each project's terminals, oldest first, by project id, once asked for with `term_list`. */
+  terminals: Record<string, string[]>;
   /** Pictures fetched from the Toto so far, as base64, by picture id. */
   pictures: Record<string, string>;
   /** Fetches a picture from an agent's conversation, unless it is here or already on its way. */
@@ -122,6 +124,11 @@ type Connection = {
   dropPicture: (id: string) => void;
   /** Says something to an agent, with any pictures to go with it. With `later`, and the agent mid-turn, it waits for the turn to end; otherwise it steers the turn. */
   say: (agentId: string, text: string, pictures?: { mime: string; base64: string }[], later?: boolean) => void;
+  /** What is typed into an agent's message box and not yet sent: here on coming back, and on other phones through the Toto. */
+  draftOf: (agentId: string) => string;
+  keepDraft: (agentId: string, text: string) => void;
+  /** Drafts as the Toto last told them, by agent id: a change here was typed somewhere else. */
+  drafts: Record<string, string>;
 };
 
 export type Trying = { phase: Route | 'waiting'; why?: Unreachable | 'lost'; tries: number };
@@ -219,6 +226,13 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean; container?: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
+  const [terminals, setTerminals] = useState<Connection['terminals']>({});
+  const [drafts, setDrafts] = useState<Connection['drafts']>({});
+  // Each keystroke lands here, not in state, so typing does not redraw the whole app.
+  const typed = useRef<Record<string, string>>({});
+  const draftTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Whether this Toto keeps drafts, as it says by sending them. An older one would answer each with an error.
+  const keepsDrafts = useRef(false);
   const [pictures, setPictures] = useState<Connection['pictures']>({});
   // Pictures on their way: the pieces that have arrived so far, by picture id.
   const arriving = useRef<Record<string, string[]>>({});
@@ -289,6 +303,16 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       case 'tags':
         setTags(msg.items);
         break;
+      case 'drafts':
+        keepsDrafts.current = true;
+        // What was typed while the line was down goes up now.
+        for (const [agentId, text] of Object.entries(typed.current)) if (text !== (msg.items[agentId] ?? '')) post({ type: 'draft', agentId, text });
+        setDrafts({ ...msg.items, ...typed.current });
+        break;
+      case 'draft':
+        typed.current[msg.agentId] = msg.text;
+        setDrafts((all) => ({ ...all, [msg.agentId]: msg.text }));
+        break;
       case 'queue':
         setQueued((all) => ({ ...all, [msg.agentId]: msg.items }));
         break;
@@ -351,7 +375,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         break;
       }
       case 'term':
-        setScreens((all) => ({ ...all, [msg.agentId]: { screen: msg.screen, cursor: msg.cursor } }));
+        setScreens((all) => ({ ...all, [msg.terminalId]: { screen: msg.screen, cursor: msg.cursor } }));
+        break;
+      case 'terms':
+        setTerminals((all) => ({ ...all, [msg.projectId]: msg.ids }));
         break;
       case 'failed':
         setPending(undefined);
@@ -368,6 +395,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     const again = (why: Trying['why']) => {
       if (!wanted) return;
       link.current = null;
+      keepsDrafts.current = false;
       setPending(undefined);
       setTrying({ phase: 'waiting', why, tries: ++tries.current });
       setStatus('reconnecting');
@@ -569,6 +597,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     post({ type: 'prompt', agentId, text, ...(images.length ? { images } : null), ...(later ? { later } : null) });
   };
 
+  const draftOf: Connection['draftOf'] = (agentId) => typed.current[agentId] ?? drafts[agentId] ?? '';
+  // A moment after typing stops, not per keystroke: the Toto writes it to disk.
+  const keepDraft: Connection['keepDraft'] = (agentId, text) => {
+    typed.current[agentId] = text;
+    clearTimeout(draftTimers.current[agentId]);
+    if (keepsDrafts.current) draftTimers.current[agentId] = setTimeout(() => post({ type: 'draft', agentId, text }), 500);
+  };
+
   const request = (message: ClientMessage) => {
     if (!link.current) return;
     setPending(message);
@@ -582,7 +618,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

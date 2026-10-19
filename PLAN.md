@@ -22,8 +22,8 @@ M3 was done before M2 because a working box already existed and reaching it from
 | Audience | Consumer product, open source, free for now |
 | Distribution | User flashes a downloadable image (aim for a Raspberry Pi Imager listing) |
 | Hardware | Pi 4 and Pi 5, 4GB+. Developed on a Debian 13 x86 machine; first run on a Pi 4 (4GB) on 2026-10-07 |
-| Harnesses | Claude Code as a chat today. Codex CLI and Gemini CLI later; both usable now by hand in a terminal agent |
-| Interaction | Native chat per harness, with terminal agents as the fallback |
+| Harnesses | Claude Code as a chat today. Codex CLI and Gemini CLI later; both usable now by hand in a project's terminal |
+| Interaction | Native chat per harness, with each project's terminals as the fallback |
 | Clients | One Expo app. Mobile first; web build from the same code later |
 | Onboarding | Bluetooth from the mobile app: the phone finds a new Toto, puts it on Wi-Fi and collects its keys. Typing an address and token remains as a fallback |
 | Pairing mode | A Toto advertises over Bluetooth only until it has an owner. After that, pairing mode is turned on by hand at the device, or by itself if the device loses its network |
@@ -50,7 +50,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 **Device server (`server/`).** A single Node service, run by systemd as the unprivileged user `toto`.
 - Reaches root only through [bin/toto-priv](bin/toto-priv), which can create or delete a project's Linux user and open or close the local network to it. Project users get ids from 50000 up.
 - Runs each chat agent as a child process under the project's user, speaking Claude Code's streaming JSON. A conversation resumes from its session id after a restart; a turn in flight is lost.
-- Runs each terminal agent as a tmux session under the project's user. tmux is the terminal emulator: the server sends its finished screen whenever it changes and takes keystrokes one at a time.
+- Runs each of a project's terminals (a tab in the app) as a tmux session under the project's user, named for the project and tab, so tmux itself is the list of them. tmux is the terminal emulator: the server sends its finished screen whenever it changes and takes keystrokes one at a time.
 - Gives agents their credentials through a private file in the project user's home, never through sudo, which logs what it is handed.
 - Keeps state in one JSON file and one append-only log per agent, under `/var/lib/toto`.
 - Listens on the local network and holds one outbound connection to the relay. Both carry the same encrypted frames.
@@ -80,7 +80,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 
 ### M4: Consumer readiness
 - Updates: the agent CLIs by themselves, Toto's server on a tap from signed releases, OS security patches unattended.
-- Done: a headless browser for chat agents. Chromium on the device, driven by the Chrome DevTools MCP server, with a skill on using it, both in a plugin the server hands to Claude (`server/plugins/browser`). Not yet measured on a Pi 4, and terminal agents do not get it.
+- Done: a headless browser for chat agents. Chromium on the device, driven by the Chrome DevTools MCP server, with a skill on using it, both in a plugin the server hands to Claude (`server/plugins/browser`). Not yet measured on a Pi 4, and terminals do not get it.
 - Plugins, as in Decisions: the plugin key and manifest format, the `toto-priv` verb, the sign-in message in `protocol.ts` (older servers answer it with `failed`, older apps ignore it), the app screen. First plugin `gh`, signing in with GitHub's device flow; then the browser plugin moves onto the same mechanism.
 - Done: agents can send a file to the phone. A `send_file` tool (plugin `server/plugins/files`, shipped with the server) checks the file is inside the project and at most 10 MB; the server sees the call, reads the file as the project's user, and attaches it to the tool's result by reference; the app fetches it in pieces on a tap and hands it to the share sheet. Not yet tried through a real chat. Files are only ever sent from the project's own directory, and only to phones already paired.
 - Done: debugging switches (`server/src/flags.ts`) set from Settings in the app, kept in a file of their own and read as used, so they need no restart. The first keeps the messages about subagents. A flag that is only read at start would need a restart message and a `toto-priv` verb.

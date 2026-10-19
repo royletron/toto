@@ -8,7 +8,7 @@ import type { AgentEvent } from '../../protocol.ts';
 import { browserArgs, deltaOf, filesArgs, pluginArgs, startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
-import { readFrame, tmuxKey } from './terminal.ts';
+import { readFrame, terminalIds, tmuxKey } from './terminal.ts';
 import { deadTokens, isPushToken, pushMessage } from './push.ts';
 
 test('maps claude stream-json onto common events', () => {
@@ -171,4 +171,10 @@ test('only the words an agent is writing itself are passed on as it writes', () 
   assert.equal(deltaOf(update({ type: 'message_start' })), undefined);
   assert.equal(deltaOf({ type: 'assistant', message: { content: [{ type: 'text', text: 'Hello' }] } }), undefined);
   assert.equal(deltaOf(undefined), undefined);
+});
+
+test('a project\'s terminals are its tmux sessions, oldest first, and nobody else\'s', () => {
+  const listed = ['300 toto-p1-b', '100 toto-p1-a', '200 toto-p2-c', '50 toto-p1-BAD!', '10 other', '400 toto-a0000003', ''].join('\n');
+  assert.deepEqual(terminalIds('p1', listed), ['a', 'b']);
+  assert.deepEqual(terminalIds('p3', listed), []);
 });

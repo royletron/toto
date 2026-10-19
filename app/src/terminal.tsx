@@ -57,8 +57,8 @@ const Line = memo(
   (a, b) => a.id === b.id,
 );
 
-/** A terminal agent: the session's screen in colour, typed into a key at a time. */
-export function Terminal({ agentId }: { agentId: string }) {
+/** One of a project's terminals: the session's screen in colour, typed into a key at a time. */
+export function Terminal({ projectId, terminalId }: { projectId: string; terminalId: string }) {
   const { post, screens, status } = useConnection();
   const { width } = useWindowDimensions();
   // Its own width, not the window's: on a wide screen it sits beside the sidebar.
@@ -68,7 +68,7 @@ export function Terminal({ agentId }: { agentId: string }) {
   // Follow new output, unless the reader has scrolled up into the history.
   const following = useRef(true);
   const online = status === 'open';
-  const term = screens[agentId];
+  const term = screens[terminalId];
 
   // The keyboard types into an invisible field, and what changes in it is what was typed.
   const input = useRef<TextInput>(null);
@@ -80,12 +80,12 @@ export function Terminal({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     if (!online) return;
-    post({ type: 'term_open', agentId, cols, rows: ROWS });
-    return () => post({ type: 'term_close', agentId });
+    post({ type: 'term_open', projectId, terminalId, cols, rows: ROWS });
+    return () => post({ type: 'term_close', terminalId });
     // `post` is a new function each render; the session only needs reopening when its target,
     // its size or the connection changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, cols, online]);
+  }, [terminalId, cols, online]);
 
   // The view shrinks while the keyboard slides in, so the bottom can only be found once it has
   // finished. Without this the prompt ends up cut off below the visible rows.
@@ -110,7 +110,7 @@ export function Terminal({ agentId }: { agentId: string }) {
 
   const press = (text?: string, key?: TermKey) => {
     following.current = true; // typing means you want to see where you are typing
-    post({ type: 'term_input', agentId, text, key });
+    post({ type: 'term_input', terminalId, text, key });
   };
 
   const hardKey = (e: unknown) => {

@@ -5,7 +5,6 @@ import { Alert, FlatList, Pressable, StyleSheet, TextInput, View, Platform } fro
 import { toolLabel } from '../../tools';
 import { asksYou, useConnection, type AgentEvent, type FileRef, type ImageRef, type Mode } from '../../connection';
 import { Markdown } from '../../markdown';
-import { Terminal } from '../../terminal';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
 import { Avatar } from '../../avatar';
@@ -264,7 +263,7 @@ function AgentCard({ row, agentId, online, deciding, decide }: { row: ToolItem; 
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, live: written, queued, activity, agents, status, synced, post, say } = useConnection();
+  const { events: all, live: written, queued, activity, agents, status, synced, post, say, draftOf, keepDraft, drafts } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
   const mode = agents.find((a) => a.id === agentId)?.mode;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
@@ -275,7 +274,17 @@ function Chat({ agentId }: { agentId: string }) {
     if (writing) done.unshift({ kind: 'text', text: writing });
     return done;
   }, [events, writing, mode]);
-  const [draft, setDraft] = useState('');
+  const [draft, setTyped] = useState(() => draftOf(agentId));
+  const setDraft = (text: string) => {
+    setTyped(text);
+    keepDraft(agentId, text);
+  };
+  // Typed on another phone, or there before the Toto said so.
+  const [heard, setHeard] = useState(drafts[agentId]);
+  if (drafts[agentId] !== heard) {
+    setHeard(drafts[agentId]);
+    setTyped(drafts[agentId] ?? '');
+  }
   // In a browser the box does not grow with what is typed unless told how tall its text has become.
   const [tall, setTall] = useState(0);
   const online = status === 'open';
@@ -483,7 +492,7 @@ export default function AgentScreen() {
         leading={agent ? <Avatar seed={agent.id} size={26} /> : undefined}
         right={
           <>
-            {agent?.harness === 'claude' && (
+            {agent && (
               <Pressable onPress={toggleAuto} accessibilityRole="switch" accessibilityState={{ checked: auto }} accessibilityLabel="Full auto" hitSlop={8} style={[ui.btn, small, auto && { borderColor: color.amber }]}>
                 <Txt tone={auto ? 'amber' : 'ghost'} weight={auto ? 'bold' : 'regular'}>{auto ? 'auto' : 'asks'}</Txt>
               </Pressable>
@@ -496,10 +505,9 @@ export default function AgentScreen() {
         <Reaching what="the conversation" />
       ) : !agent ? (
         <Empty mood="offline">This agent is no longer on this Toto. It may have been deleted from another phone.</Empty>
-      ) : agent.harness === 'terminal' ? (
-        <Terminal agentId={id} />
       ) : (
-        <Chat agentId={id} />
+        // Keyed, so going to another agent starts from that agent's draft, not this one's.
+        <Chat key={id} agentId={id} />
       )}
     </Screen>
   );

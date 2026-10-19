@@ -19,16 +19,15 @@ function AgentRow({ agent }: { agent: Agent }) {
   const { activity } = useConnection();
   const router = useRouter();
   const state = STATE[activity[agent.id] ?? 'idle'];
-  const terminal = agent.harness === 'terminal';
   return (
-    <Pressable onPress={() => router.push({ pathname: '/agent/[id]', params: { id: agent.id } })} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center', gap: 12 }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${agent.name}, ${terminal ? 'terminal' : state.label}`}>
+    <Pressable onPress={() => router.push({ pathname: '/agent/[id]', params: { id: agent.id } })} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center', gap: 12 }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${agent.name}, ${state.label}`}>
         {/* A fixed-width column, so names line up like a process list. */}
-        <View style={styles.faceCol}><Avatar seed={agent.id} size={34} state={terminal ? undefined : activity[agent.id] ?? 'idle'} /></View>
+        <View style={styles.faceCol}><Avatar seed={agent.id} size={34} state={activity[agent.id] ?? 'idle'} /></View>
         <View style={{ flex: 1 }}>
           <Txt weight="bold" numberOfLines={1}>{agent.name}</Txt>
           <Txt tone="ghost" small>{agent.worktree ? 'own branch' : 'main checkout'}</Txt>
         </View>
-        <Txt tone={terminal ? 'ghost' : state.tone} weight={state.label === 'waiting on you' && !terminal ? 'bold' : 'regular'}>{terminal ? 'terminal' : state.label}</Txt>
+        <Txt tone={state.tone} weight={state.label === 'waiting on you' ? 'bold' : 'regular'}>{state.label}</Txt>
     </Pressable>
   );
 }
@@ -41,7 +40,6 @@ function StartAgent({ projectId }: { projectId: string }) {
   const [suggested, setSuggested] = useState(agentName);
   const [worktree, setWorktree] = useState(true);
   const [auto, setAuto] = useState(false);
-  const [terminal, setTerminal] = useState(false);
   // Nothing can be asked of a Toto that is not there, and asking would silently do nothing.
   if (status !== 'open')
     return (
@@ -57,7 +55,7 @@ function StartAgent({ projectId }: { projectId: string }) {
       </Pressable>
     );
   const start = () => {
-    request({ type: 'create_agent', projectId, name: name.trim() || suggested, harness: terminal ? 'terminal' : 'claude', worktree, mode: auto ? 'auto' : 'ask' });
+    request({ type: 'create_agent', projectId, name: name.trim() || suggested, harness: 'claude', worktree, mode: auto ? 'auto' : 'ask' });
     setName('');
     setOpen(false);
   };
@@ -65,9 +63,7 @@ function StartAgent({ projectId }: { projectId: string }) {
     <View style={styles.form}>
       <Field label="name" value={name} onChangeText={setName} placeholder={suggested} autoFocus />
       <Check label="Own branch, so it cannot clash with other agents" value={worktree} onChange={setWorktree} />
-      {/* ponytail: a checkbox while there are two kinds of agent; a picker when Codex and Gemini arrive. */}
-      <Check label="Plain terminal, to run any tool by hand" value={terminal} onChange={setTerminal} />
-      {!terminal && <Check label="Full auto: act without asking first" value={auto} onChange={setAuto} />}
+      <Check label="Full auto: act without asking first" value={auto} onChange={setAuto} />
       <View style={{ flexDirection: 'row', gap: 12, paddingTop: 12 }}>
         <Btn kind="primary" label="Start it" onPress={start} disabled={busy} style={{ flex: 1 }} />
         <Btn label="Cancel" onPress={() => setOpen(false)} />
@@ -122,6 +118,11 @@ export default function ProjectScreen() {
               ) : (
                 <StartAgent projectId={id} />
               )}
+              {/* Shells in the project, kept running between visits, a tab each. */}
+              <Pressable onPress={() => router.push({ pathname: '/terminal/[id]', params: { id } })} style={styles.row} accessibilityRole="button">
+                <Txt>$ Terminal</Txt>
+                <Txt tone="ghost" small>Shells in this project, to run anything by hand. They keep running when you leave.</Txt>
+              </Pressable>
               <TagList projectId={id} />
               {project?.lan !== undefined && (
                 <View style={[styles.row, { paddingVertical: 8 }]}>

@@ -116,3 +116,24 @@ test('memories and tasks, from the phone and from an agent', { timeout: 90_000 }
   // And its project's token no longer opens anything for it.
   assert.equal((await fetch(`http://127.0.0.1:${apiPort}/api/index`, { method: 'POST', headers: { authorization: `Bearer ${apiToken('owner-token', project.id)}`, 'x-toto-agent': agent.id } })).status, 401);
 });
+
+test('a draft typed on one phone is on the other, and still there for the next to connect', { timeout: 60_000 }, async () => {
+  const [one, two] = [await dial('owner-token'), await dial('owner-token')];
+  for (const phone of [one, two]) phone.send({ type: 'sync' });
+  await one.next('state');
+  one.send({ type: 'create_project', name: 'drafts', repo: 'https://example.test/origin.git' });
+  await until('the project', () => one.said.some((m) => m.type === 'state' && m.projects.some((p: any) => p.name === 'drafts')));
+  const project = one.said.findLast((m) => m.type === 'state').projects.find((p: any) => p.name === 'drafts');
+  one.send({ type: 'create_agent', projectId: project.id, name: 'd', harness: 'claude', mode: 'ask', worktree: false });
+  await until('the agent', () => one.said.some((m) => m.type === 'state' && m.agents.some((a: any) => a.projectId === project.id)));
+  const agent = one.said.findLast((m) => m.type === 'state').agents.find((a: any) => a.projectId === project.id);
+  await until('the drafts', () => two.said.some((m) => m.type === 'drafts'));
+  one.send({ type: 'draft', agentId: agent.id, text: 'half a thought' });
+  await until('the draft on the other phone', () => two.said.some((m) => m.type === 'draft'));
+  assert.deepEqual(two.said.findLast((m) => m.type === 'draft'), { type: 'draft', agentId: agent.id, text: 'half a thought' });
+  assert.equal(one.said.some((m) => m.type === 'draft'), false);
+  const three = await dial('owner-token');
+  three.send({ type: 'sync' });
+  await until('the drafts', () => three.said.some((m) => m.type === 'drafts'));
+  assert.deepEqual(three.said.find((m) => m.type === 'drafts').items, { [agent.id]: 'half a thought' });
+});

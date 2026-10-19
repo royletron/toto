@@ -110,7 +110,7 @@ sudo ./install.sh</pre>
       <li><b>Asks, or full auto.</b> An agent that asks stops before anything risky and waits for you. One on full auto does not. You can switch at any point.</li>
       <li><b>A browser.</b> Chat agents can open pages, read them, click through them and take screenshots in a headless Chromium on the Toto, with nothing kept between sessions. It has the same reach as the project: the internet, and your home network only if you allow it.</li>
       <li><b>Pictures.</b> A screenshot an agent takes, or an image file it reads, shows in the conversation; tap it to see it full size and save it. You can send pictures to an agent too, with the + beside the message box. They are shrunk before sending and kept on the Toto with the conversation.</li>
-      <li><b>Terminal agents.</b> A shell in the project, typed into from your phone. Use it for anything Toto has no chat for yet, such as other coding tools.</li>
+      <li><b>Terminals.</b> Shells in the project, a tab each, typed into from your phone. They keep running when you leave and are there on every phone. Use them for anything Toto has no chat for yet, such as other coding tools.</li>
       <li><b>Home network.</b> Agents can reach the internet but not the other devices on your network, unless you allow it for that project.</li>
     </ul>
     <p>Your phone is notified when an agent stops to ask and when one finishes. The notification says only that; nothing about the work is in it.</p>
@@ -167,7 +167,7 @@ npx wrangler deploy</pre>
       <li><b>Bluetooth setup has its own key exchange,</b> so your Wi&#8209;Fi password is not readable in the air. A Toto that has an owner mixes its key into that exchange, so a stranger nearby gets no answer.</li>
       <li><b>Projects are separated by the operating system.</b> One Linux user each, a private home directory, and a firewall rule keeping it off your home network.</li>
       <li><b>The part of Toto that listens to the network is not root.</b> It can ask a small helper to do five things as root: make or remove a project's user, open or close the home network to it, list or join Wi&#8209;Fi, and start an update, which the helper fetches and checks for itself.</li>
-      <li><b>Secrets stay off command lines and out of logs.</b> Credentials reach agents through a private file, and what you type into a terminal agent goes down a private pipe.</li>
+      <li><b>Secrets stay off command lines and out of logs.</b> Credentials reach agents through a private file, and what you type into a terminal goes down a private pipe.</li>
     </ul>
   </section>
 
@@ -179,7 +179,7 @@ npx wrangler deploy</pre>
       <li><b>One SSH key per Toto.</b> Added to your git account, it reaches every repository that account can.</li>
       <li><b>An agent can still reach services on the Toto's own loopback address.</b></li>
       <li><b>The relay has no usage limits yet.</b></li>
-      <li><b>Only Claude Code has a chat.</b> Other tools run in a terminal agent.</li>
+      <li><b>Only Claude Code has a chat.</b> Other tools run in a project's terminal.</li>
     </ul>
   </section>
 </main>

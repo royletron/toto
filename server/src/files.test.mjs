@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { answer, problem } from '../plugins/files/send-file.mjs';
 import { MAX_FILE, dropImages, readFile, saveFile } from './images.ts';
 import { readAs } from './projects.ts';
+import { asMarkdown, viewable } from '../../app/src/textfile.ts';
 
 const project = mkdtempSync(join(tmpdir(), 'toto-files-'));
 writeFileSync(`${project}/report.pdf`, 'pdf bytes');
@@ -57,4 +58,15 @@ test('a file is read for the person in full, and a file that is too big is seen 
   assert.equal((await readAs(undefined, project, `${project}/report.pdf`, MAX_FILE)).toString(), 'pdf bytes');
   assert.equal((await readAs(undefined, project, `${project}/big`, MAX_FILE)).length, MAX_FILE + 1);
   assert.equal(await readAs(undefined, project, `${project}/nothing`, MAX_FILE), undefined);
+});
+
+test('a text file is offered to read in place, and shown as code that its own backticks cannot end', () => {
+  const ref = (name, mime, bytes = 10) => ({ id: 'x', name, mime, bytes });
+  assert.equal(viewable(ref('notes.txt', 'text/plain')), true);
+  assert.equal(viewable(ref('main.py', 'application/octet-stream')), true);
+  assert.equal(viewable(ref('report.pdf', 'application/pdf')), false);
+  assert.equal(viewable(ref('huge.log', 'text/plain', 1024 * 1024)), false);
+  assert.equal(asMarkdown('README.md', '# Hi'), '# Hi');
+  assert.equal(asMarkdown('out.log', 'ok'), '```\nok\n```');
+  assert.equal(asMarkdown('a.json', 'say ````x````'), '`````json\nsay ````x````\n`````');
 });

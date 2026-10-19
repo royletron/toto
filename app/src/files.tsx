@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
 import { useConnection, type FileRef } from './connection';
+import { Markdown } from './markdown';
+import { asMarkdown, viewable } from './textfile';
 import { saveFile } from './save';
 import { Btn, Txt } from './ui';
 
@@ -20,7 +22,10 @@ export function Files({ agentId, files, task, onRemove }: { agentId: string; fil
 function FileRow({ agentId, file, task, onRemove }: { agentId: string; file: FileRef; task?: boolean; onRemove?: (file: FileRef) => void }) {
   const { pictures, wantFile, dropPicture, status } = useConnection();
   const [wanted, setWanted] = useState(false);
+  // Read in place: kept in memory while it is on show, and let go when it is hidden.
+  const [viewing, setViewing] = useState(false);
   const data = pictures[file.id];
+  const text = useMemo(() => (viewing && data !== undefined ? new TextDecoder().decode(Uint8Array.from(atob(data), (c) => c.charCodeAt(0))) : undefined), [viewing, data]);
 
   useEffect(() => {
     if (!wanted || data === undefined) return;
@@ -28,31 +33,48 @@ function FileRow({ agentId, file, task, onRemove }: { agentId: string; file: Fil
     saveFile(file.id, file.name, file.mime, data)
       .catch(() => Alert.alert('That did not work', `${file.name} could not be saved.`))
       .finally(() => {
-        dropPicture(file.id);
+        if (!viewing) dropPicture(file.id);
         setWanted(false);
       });
     // `dropPicture` is new each render; this is about the file arriving.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wanted, data]);
 
+  const button = { minHeight: 36, paddingHorizontal: 14 };
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Txt small numberOfLines={1} style={{ flex: 1 }}>
-        <Txt tone="amber" small>◇ </Txt>
-        {file.name}
-        <Txt tone="ghost" small>{`  ${size(file.bytes)}`}</Txt>
-      </Txt>
-      <Btn
-        label={wanted ? (data === undefined ? 'Fetching…' : 'Saving…') : 'Save'}
-        busy={wanted}
-        disabled={status !== 'open'}
-        onPress={() => {
-          setWanted(true);
-          wantFile(agentId, file, task);
-        }}
-        style={{ minHeight: 36, paddingHorizontal: 14 }}
-      />
-      {onRemove && <Btn label="Remove" kind="danger" onPress={() => onRemove(file)} style={{ minHeight: 36, paddingHorizontal: 14 }} />}
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Txt small numberOfLines={1} style={{ flex: 1 }}>
+          <Txt tone="amber" small>◇ </Txt>
+          {file.name}
+          <Txt tone="ghost" small>{`  ${size(file.bytes)}`}</Txt>
+        </Txt>
+        {viewable(file) && (
+          <Btn
+            label={!viewing ? 'View' : text === undefined ? 'Fetching…' : 'Hide'}
+            busy={viewing && text === undefined}
+            disabled={wanted || (!viewing && status !== 'open')}
+            onPress={() => {
+              setViewing(!viewing);
+              if (viewing) return dropPicture(file.id);
+              if (data === undefined) wantFile(agentId, file, task);
+            }}
+            style={button}
+          />
+        )}
+        <Btn
+          label={wanted ? (data === undefined ? 'Fetching…' : 'Saving…') : 'Save'}
+          busy={wanted}
+          disabled={wanted || (data === undefined && status !== 'open')}
+          onPress={() => {
+            setWanted(true);
+            if (data === undefined) wantFile(agentId, file, task);
+          }}
+          style={button}
+        />
+        {onRemove && <Btn label="Remove" kind="danger" onPress={() => onRemove(file)} style={button} />}
+      </View>
+      {text !== undefined && <Markdown text={asMarkdown(file.name, text)} />}
     </View>
   );
 }

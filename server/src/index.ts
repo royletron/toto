@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
-import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
+import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
@@ -63,7 +63,7 @@ const MAX_PHONES = 20;
 const clients = new Set<Client>();
 
 type ProjectRecord = Project & { user?: string; dir: string };
-type AgentRecord = Agent & { cwd: string; sessionId?: string };
+type AgentRecord = Agent & { cwd: string; sessionId?: string; draft?: string };
 
 // --- State on disk: one JSON file for projects and agents, one append-only log per agent.
 const logDir = join(dataDir, 'logs');
@@ -130,8 +130,9 @@ const running = new Map<string, ReturnType<typeof startClaude>>();
 // Agents partway through a turn. A process stays in `running` while it waits for the next prompt,
 // so that alone does not say an agent is working.
 const thinking = new Set<string>();
-// Terminal agents someone has open: who is watching, and how to stop.
-const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen } & ReturnType<typeof watchTerminal>>();
+// Terminals someone has open, by id: whose they are, who is watching, and how to stop.
+const terminals = new Map<string, { projectId: string; viewers: Set<Client>; screen?: Screen } & ReturnType<typeof watchTerminal>>();
+const shell = (project: ProjectRecord) => ({ user: project.user, cwd: project.dir, projectId: project.id });
 const sshKey = await deviceKey();
 // Credentials change by editing the server's environment and restarting, so this is where projects catch up.
 await Promise.all(state.projects.map((p) => installEnv(p.user, projectEnv(p)).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
@@ -242,6 +243,25 @@ const save = () => {
   writeFileSync(stateFile + '.tmp', JSON.stringify(state, null, 2));
   renameSync(stateFile + '.tmp', stateFile); // atomic, so a crash mid-write cannot corrupt it
 };
+
+// Terminal agents became a project's terminals: each keeps its session, as a tab, and is no longer an agent.
+const shells = state.agents.filter((a) => (a.harness as string) === 'terminal');
+for (const a of shells) {
+  const project = state.projects.find((p) => p.id === a.projectId);
+  if (project) await adoptTerminal(shell(project), a.id);
+  logs.delete(a.id);
+}
+if (shells.length) {
+  state.agents = state.agents.filter((a) => !shells.includes(a));
+  save();
+}
+
+/** Tells everyone with one of a project's terminals open (and `also`) which terminals it has. */
+async function tellTerms(project: ProjectRecord, also: Iterable<Client> = []) {
+  const ids = await listTerminals(shell(project));
+  const watching = new Set([...also, ...[...terminals.values()].filter((t) => t.projectId === project.id).flatMap((t) => [...t.viewers])]);
+  for (const client of watching) send(client, { type: 'terms', projectId: project.id, ids });
+}
 
 /** Persists projects and agents, then tells every client. */
 const commit = () => {
@@ -395,18 +415,15 @@ const where = (agent: AgentRecord) => ({
   agentId: agent.id,
 });
 
-const unwatch = (agentId: string, ws: Client) => {
-  const term = terminals.get(agentId);
+const unwatch = (terminalId: string, ws: Client) => {
+  const term = terminals.get(terminalId);
   if (!term?.viewers.delete(ws) || term.viewers.size) return;
   term.stop();
-  terminals.delete(agentId);
+  terminals.delete(terminalId);
 };
 
 /** Stops an agent and forgets it. The caller removes it from `state.agents`. */
 const forget = (agent: AgentRecord) => {
-  terminals.get(agent.id)?.stop();
-  terminals.delete(agent.id);
-  if (agent.harness === 'terminal') killTerminal(where(agent));
   running.get(agent.id)?.stop();
   clearTimeout(deltas.get(agent.id)?.timer);
   deltas.delete(agent.id);
@@ -480,6 +497,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       send(ws, { type: 'memories', items: memories.list() });
       send(ws, { type: 'tasks', items: tasks.list() });
       send(ws, { type: 'tags', items: tasks.tags() });
+      send(ws, { type: 'drafts', items: Object.fromEntries(state.agents.filter((a) => a.draft).map((a) => [a.id, a.draft!])) });
       for (const [agentId, items] of queues) if (items.length) send(ws, { type: 'queue', agentId, items: items.map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
       return send(ws, { type: 'synced' });
     case 'ping':
@@ -559,6 +577,8 @@ async function handle(msg: ClientMessage, ws: Client) {
       tellMemories();
       tellTasks();
       state.agents.filter((a) => a.projectId === project.id).forEach(forget);
+      // A project without a user of its own shares tmux with the server, so its sessions would outlive it.
+      for (const id of await listTerminals(shell(project))) await killTerminal(shell(project), id);
       state.agents = state.agents.filter((a) => a.projectId !== project.id);
       state.projects = state.projects.filter((p) => p !== project);
       commit();
@@ -582,37 +602,70 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'create_agent': {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project || !isName(msg.name) || !isMode(msg.mode)) throw new Error('An agent needs a project and a name.');
-      const harness = msg.harness === 'terminal' ? 'terminal' : 'claude';
+      const harness = 'claude';
       const id = newId();
       const cwd = msg.worktree === true ? await addWorktree(project, id) : project.dir;
       logs.set(id, []);
       state.agents.push({ id, projectId: project.id, name: msg.name.trim(), harness, mode: msg.mode, worktree: msg.worktree === true, cwd });
       return commit();
     }
+    case 'draft': {
+      if (!agent || typeof msg.text !== 'string' || msg.text.length > 20_000) return;
+      agent.draft = msg.text || undefined;
+      save();
+      for (const client of clients) if (client !== ws) send(client, { type: 'draft', agentId: agent.id, text: msg.text });
+      return;
+    }
+    case 'term_list': {
+      const project = state.projects.find((p) => p.id === msg.projectId);
+      if (!project) throw new Error('This project is no longer on this Toto.');
+      return send(ws, { type: 'terms', projectId: project.id, ids: await listTerminals(shell(project)) });
+    }
     case 'term_open': {
-      if (agent?.harness !== 'terminal') return;
+      const project = state.projects.find((p) => p.id === msg.projectId);
+      const id = msg.terminalId;
+      if (!project || !isTerminalId(id)) return;
+      let term = terminals.get(id);
+      if (term && term.projectId !== project.id) return;
       const size = (n: unknown, max: number) => Math.min(max, Math.max(10, Math.floor(Number(n)) || 10));
-      await openTerminal(where(agent), size(msg.cols, 300), size(msg.rows, 100));
-      let term = terminals.get(agent.id);
+      await openTerminal(shell(project), id, size(msg.cols, 300), size(msg.rows, 100));
+      term = terminals.get(id);
       if (!term) {
         const viewers = new Set<Client>();
-        const watching = watchTerminal(where(agent), (screen) => {
-          const open = terminals.get(agent.id);
-          if (open) open.screen = screen;
-          for (const viewer of viewers) send(viewer, { type: 'term', agentId: agent.id, ...screen });
-        });
-        term = { viewers, ...watching };
-        terminals.set(agent.id, term);
+        const watching = watchTerminal(
+          shell(project),
+          id,
+          (screen) => {
+            const open = terminals.get(id);
+            if (open) open.screen = screen;
+            for (const viewer of viewers) send(viewer, { type: 'term', terminalId: id, ...screen });
+          },
+          () => {
+            if (terminals.get(id)?.viewers === viewers) terminals.delete(id);
+            void tellTerms(project, viewers);
+          },
+        );
+        term = { projectId: project.id, viewers, ...watching };
+        terminals.set(id, term);
       }
+      const fresh = !term.viewers.size;
       term.viewers.add(ws);
-      if (term.screen) send(ws, { type: 'term', agentId: agent.id, ...term.screen });
+      if (term.screen) send(ws, { type: 'term', terminalId: id, ...term.screen });
+      // A new tab, or one somebody else has just opened, should show on every phone looking at this project's terminals.
+      if (fresh) void tellTerms(project, [ws]);
       return;
     }
     case 'term_close':
-      return unwatch(msg.agentId, ws);
+      return unwatch(msg.terminalId, ws);
+    case 'term_kill': {
+      const project = state.projects.find((p) => p.id === msg.projectId);
+      if (!project || !isTerminalId(msg.terminalId)) return;
+      await killTerminal(shell(project), msg.terminalId);
+      return tellTerms(project, [ws]);
+    }
     case 'term_input': {
       // Only into a terminal this client has open, which is also what gives us somewhere to send it.
-      const term = agent && terminals.get(agent.id);
+      const term = terminals.get(msg.terminalId);
       if (!term?.viewers.has(ws)) return;
       return term.type(typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined, msg.key);
     }
@@ -836,7 +889,7 @@ function accept(wire: { send: (frame: string) => void; close: () => void }) {
   const closed = () => {
     if (!client) return;
     clients.delete(client);
-    for (const agentId of [...terminals.keys()]) unwatch(agentId, client);
+    for (const terminalId of [...terminals.keys()]) unwatch(terminalId, client);
     client = undefined;
   };
   const receive = (raw: string) => {
