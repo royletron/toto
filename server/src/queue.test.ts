@@ -88,4 +88,11 @@ test('a message sent mid-turn can wait for the turn to end, be taken back, or go
   back.send({ type: 'sync' });
   await back.next('synced');
   assert.deepEqual(back.said.find((m) => m.type === 'queue' && m.agentId === agent.id)?.items, []);
+
+  // A turn that ends with Claude dying still lets what was waiting go in, to a fresh Claude.
+  phone.send({ type: 'prompt', agentId: agent.id, text: 'crash now' });
+  await eventually('the turn to be under way', () => said('crash now') === 1);
+  phone.send({ type: 'prompt', agentId: agent.id, text: 'after the crash', later: true });
+  assert.deepEqual((await phone.next('queue')).items, [{ text: 'after the crash' }]);
+  await eventually('what waited is said after the crash', () => said('after the crash') === 1);
 });

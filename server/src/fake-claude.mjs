@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Test stand-in for the claude CLI: each prompt asks permission for two tool calls,
-// then reports the decision it was given for each.
+// then reports the decision it was given for each. A prompt saying "crash now" makes it die mid-turn instead.
 import { createInterface } from 'node:readline';
 
 const out = (o) => console.log(JSON.stringify(o));
 const answers = [];
 createInterface({ input: process.stdin }).on('line', (line) => {
   const msg = JSON.parse(line);
+  if (msg.type === 'user' && line.includes('crash now')) return void setTimeout(() => process.exit(3), 500);
   if (msg.type === 'user') {
     for (const n of [1, 2]) {
       out({ type: 'assistant', message: { content: [{ type: 'tool_use', id: `t${n}`, name: 'Bash', input: { n } }] } });

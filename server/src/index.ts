@@ -358,8 +358,10 @@ const emit = (agent: AgentRecord, event: AgentEvent) => {
     else notify('approval', agent);
   }
   if (event.type === 'done' || event.type === 'error') thinking.delete(agent.id);
+  // What was waiting goes in when the turn ends, even when Claude died partway through it, or it would wait for ever.
   // One more thing waiting means it is not finished, so nobody needs telling it is.
-  if (event.type === 'done' && !sayNext(agent)) notify('done', agent);
+  const over = event.type === 'done' || event.type === 'error';
+  if (over && !sayNext(agent) && event.type === 'done') notify('done', agent);
 };
 
 // Approvals left open by a previous run have nobody to answer to any more.
