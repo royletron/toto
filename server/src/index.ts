@@ -498,7 +498,8 @@ async function handle(msg: ClientMessage, ws: Client) {
       send(ws, { type: 'tasks', items: tasks.list() });
       send(ws, { type: 'tags', items: tasks.tags() });
       send(ws, { type: 'drafts', items: Object.fromEntries(state.agents.filter((a) => a.draft).map((a) => [a.id, a.draft!])) });
-      for (const [agentId, items] of queues) if (items.length) send(ws, { type: 'queue', agentId, items: items.map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
+      // Every agent's, empty ones too: a phone that was away when a line emptied still shows what was in it.
+      for (const agent of state.agents) send(ws, { type: 'queue', agentId: agent.id, items: (queues.get(agent.id) ?? []).map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
       return send(ws, { type: 'synced' });
     case 'ping':
       return send(ws, { type: 'pong', name: state.name });

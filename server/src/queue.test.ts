@@ -82,4 +82,10 @@ test('a message sent mid-turn can wait for the turn to end, be taken back, or go
   for (const id of ['t1', 't2']) phone.send({ type: 'approve', agentId: agent.id, id, allow: true });
   await eventually('what waited is said when the turn ends', () => said('second') === 1);
   assert.deepEqual(phone.said.findLast((m) => m.type === 'queue').items, []);
+
+  // A phone that was away while the line emptied is told it is empty, not left showing what was in it.
+  const back = await dial('owner-token');
+  back.send({ type: 'sync' });
+  await back.next('synced');
+  assert.deepEqual(back.said.find((m) => m.type === 'queue' && m.agentId === agent.id)?.items, []);
 });
