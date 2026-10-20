@@ -1,26 +1,54 @@
 // Toto's face, and the count of Totos online. The face is text, and it moves the way it does in
 // the app and on the device: each character stays where it is and is swapped for another.
+// A copy of the moods in app/src/moods.ts that this page uses. Each has a face it holds for a
+// random time (hold, ms) and gestures it picks from at random: lists of [face, ms].
 const NOSE = '•';
-const FRAMES = {
-  awake: [
-    ['/o o\\', 1700], ['/- -\\', 140], ['/o o\\', 1000], ['/o O\\', 800], ['/o o\\', 500], ['/O o\\', 800],
-    ['/o o\\', 1100], ['|o o\\', 170], ['/o o\\', 900], ['/. .\\', 600], ['/o o\\', 500], ['/- -\\', 140],
-  ],
-  resting: [['/- -\\', 1000], ['/- -\\ z', 700], ['/- -\\ zZ', 1000], ['/- -\\', 600]],
-  looking: [['/. .\\', 450], ['/o o\\', 450], ['/. .\\', 450], ['/O O\\', 450]],
-  offline: [['/. .\\', 0]],
+const MOODS = {
+  awake: {
+    home: '/o o\\', hold: [1200, 3600],
+    moves: [
+      [['/- -\\', 140]], [['/- -\\', 140]], [['/- -\\', 110], ['/o o\\', 110], ['/- -\\', 140]],
+      [['/o O\\', 700]], [['/O o\\', 700]], [['/O o\\', 500], ['/o O\\', 700]],
+      [['|o o\\', 170]], [['/o o|', 170]],
+      [['/. .\\', 600]], [['/^ ^\\', 800]], [['/- o\\', 300]], [['/o -\\', 300]],
+    ],
+  },
+  resting: {
+    home: '/- -\\', hold: [1500, 3500],
+    moves: [
+      [['/- -\\ z', 700], ['/- -\\ zZ', 900]],
+      [['/- -\\ z', 600], ['/- -\\ zZ', 700], ['/- -\\ zZz', 800]],
+      [['|- -\\', 170]], [['/- .\\', 500]], [['/. .\\', 400]],
+    ],
+  },
+  looking: {
+    home: '/. .\\', hold: [250, 450],
+    moves: [
+      [['/o o\\', 450], ['/. .\\', 450], ['/O O\\', 450]],
+      [['/o o\\', 450], ['/. .\\', 450]],
+      [['/O O\\', 450], ['/. .\\', 450], ['/o O\\', 450]],
+    ],
+  },
+  offline: { home: '/. .\\', hold: [0, 0], moves: [] },
 };
 
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** The next few frames of a mood: its home face held a while, then one gesture, timings varied a little. */
+function gesture(mood) {
+  const { home, hold, moves } = MOODS[mood];
+  if (!moves.length) return [[home, 0]];
+  const move = moves[Math.floor(Math.random() * moves.length)];
+  return [[home, hold[0] + Math.random() * (hold[1] - hold[0])], ...move.map(([text, ms]) => [text, ms * (0.8 + Math.random() * 0.4)])];
+}
+
 /** Draws a mood into an element and keeps it moving. Returns a function that changes the mood. */
 function face(el, mood) {
-  let frames = FRAMES[mood];
-  let at = 0;
+  let queue;
   let timer;
   const nose = el.dataset.nose !== 'none';
-  const draw = () => {
-    el.textContent = frames[at][0];
+  const draw = (text, ms) => {
+    el.textContent = text;
     if (nose) {
       const n = document.createElement('span');
       n.className = 'nose';
@@ -29,16 +57,22 @@ function face(el, mood) {
       el.append(n);
     }
     el.className = `face ${mood}`;
-    if (!still && frames.length > 1) timer = setTimeout(() => { at = (at + 1) % frames.length; draw(); }, frames[at][1]);
+    if (!still && ms) timer = setTimeout(advance, ms);
   };
-  draw();
+  const advance = () => {
+    if (!queue.length) queue = gesture(mood);
+    draw(...queue.shift());
+  };
+  const start = () => {
+    queue = gesture(mood);
+    draw(...queue.shift());
+  };
+  start();
   return (next) => {
     if (next === mood) return;
     clearTimeout(timer);
     mood = next;
-    frames = FRAMES[mood];
-    at = 0;
-    draw();
+    start();
   };
 }
 

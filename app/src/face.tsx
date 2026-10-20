@@ -1,6 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { AccessibilityInfo, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { FRAMES, compact, type Mood } from './moods';
+import { compact, gesture, home, type Frame, type Mood } from './moods';
 import { color, font } from './theme';
 
 export type { Mood } from './moods';
@@ -38,9 +38,11 @@ type Props = {
  * beside it, so screen readers skip it.
  */
 export const Face = memo(function Face({ mood, size = 15, nose = false, trail = false, ink, style }: Props) {
-  const frames = useMemo(() => (nose || trail ? FRAMES[mood] : compact(FRAMES[mood])), [mood, nose, trail]);
-  const [at, setAt] = useState(0);
   const [still, setStill] = useState(false);
+  const full = nose || trail;
+  // Frames to play next, kept with the mood they are for: a new mood starts from its home face.
+  const [playing, setPlaying] = useState<{ mood: Mood; frame: Frame }>({ mood, frame: home(mood) });
+  const frame = playing.mood === mood ? playing.frame : home(mood);
 
   useEffect(() => {
     let alive = true;
@@ -50,21 +52,26 @@ export const Face = memo(function Face({ mood, size = 15, nose = false, trail = 
     };
   }, []);
 
-  // A new mood starts from its first frame. Derived during render, as React asks, rather than in an effect.
-  const [shown, setShown] = useState(frames);
-  if (shown !== frames) {
-    setShown(frames);
-    setAt(0);
-  }
-
-  const frame = frames[Math.min(at, frames.length - 1)];
+  // Each gesture is chosen at random when the last runs out, so faces side by side do not move together.
   useEffect(() => {
-    if (still || frames.length < 2) return;
-    const timer = setTimeout(() => setAt((i) => (i + 1) % frames.length), frame.ms);
+    if (still) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const next = () => (full ? gesture(mood) : compact(gesture(mood)));
+    let queue = next();
+    const wait = (f: Frame) => {
+      if (f.ms) timer = setTimeout(advance, f.ms);
+    };
+    const advance = () => {
+      if (!queue.length) queue = next();
+      const f = queue.shift()!;
+      setPlaying({ mood, frame: f });
+      wait(f);
+    };
+    wait(queue.shift()!);
     return () => clearTimeout(timer);
-  }, [at, frames, frame.ms, still]);
+  }, [mood, full, still]);
 
-  const shownFrame = still ? frames[0] : frame;
+  const shownFrame = still ? home(mood) : frame;
   const main = ink ?? INK[mood];
   const type = { fontFamily: font.bold, fontSize: size, lineHeight: Math.round(size * 1.25), color: main } as const;
   return (

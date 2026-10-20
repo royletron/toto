@@ -16,7 +16,7 @@ import { createConnection } from 'node:net';
 import { createInterface } from 'node:readline';
 import { existsSync, readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { FRAMES, type Mood } from './moods.ts';
+import { gesture, type Frame, type Mood } from './moods.ts';
 import { loginLines } from './welcome.ts';
 
 const SOCKET = process.env.TOTO_CTL ?? '/run/toto/ctl.sock';
@@ -66,12 +66,23 @@ function moodOf(status: Status | undefined): Mood {
   return 'awake';
 }
 
-/** The face for a mood at a moment in time, as two lines of text. */
-function face(mood: Mood, at: number): [string, string] {
-  const frames = FRAMES[mood];
-  const total = frames.reduce((sum, f) => sum + f.ms, 0);
-  let t = total ? at % total : 0;
-  const frame = frames.find((f) => (t -= f.ms) < 0) ?? frames[0];
+// What the face is doing now and when it moves on; gestures are chosen at random as each runs out.
+let acting: { mood: Mood; queue: Frame[]; frame: Frame; until: number } | undefined;
+
+/** The face for a mood right now, as two lines of text. */
+function face(mood: Mood): [string, string] {
+  const now = Date.now();
+  if (acting?.mood !== mood) {
+    const queue = gesture(mood);
+    const frame = queue.shift()!;
+    acting = { mood, queue, frame, until: now + frame.ms };
+  }
+  if (acting.frame.ms && now >= acting.until) {
+    if (!acting.queue.length) acting.queue = gesture(mood);
+    acting.frame = acting.queue.shift()!;
+    acting.until = now + acting.frame.ms;
+  }
+  const frame = acting.frame;
   const ink = mood === 'waiting' ? amber : mood === 'failed' ? raspberry : mood === 'offline' ? ghost : bold;
   const nose = mood === 'awake' || mood === 'working' || mood === 'resting' ? amber(frame.nose) : ink(frame.nose);
   return [ink((frame.face + frame.extra).padEnd(9)), `  ${nose}      `];
@@ -166,7 +177,6 @@ async function screen() {
   const { stdin, stdout } = process;
   let status = await ask({ cmd: 'status' });
   let busy = false; // a prompt has the terminal; the screen waits
-  const started = Date.now();
   const enter = () => {
     stdout.write('\x1b[?1049h\x1b[?25l');
     stdin.setRawMode(true);
@@ -178,7 +188,7 @@ async function screen() {
   };
   const draw = () => {
     if (busy) return;
-    const [top, bottom] = face(moodOf(status), Date.now() - started);
+    const [top, bottom] = face(moodOf(status));
     const body = describe(status);
     const out = ['', '', `   ${top}  ${bold(status?.name ?? 'toto')}`, `   ${bottom}  ${body[0] ?? ''}`, ...body.slice(1).map((l) => `   ${l}`), '', ''];
     const keys = [['p', status?.pairingSeconds ? 'stop pairing' : 'pairing mode'], ['l', 'login'], ['w', 'Wi-Fi'], ['n', 'rename'], ['r', 'restart'], ['s', 'shell'], ['q', 'quit']];
@@ -252,7 +262,7 @@ else if (command === 'screen') {
 }
 else if (!command || command === 'status') {
   const status = await ask({ cmd: 'status' });
-  const [top, bottom] = face(moodOf(status), 0);
+  const [top, bottom] = face(moodOf(status));
   const body = describe(status);
   console.log([`\n   ${top}  ${bold(status?.name ?? 'toto')}`, `   ${bottom}  ${body[0] ?? ''}`, ...body.slice(1).map((l) => `   ${l}`), ''].join('\n'));
 } else {

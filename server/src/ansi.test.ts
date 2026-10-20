@@ -61,29 +61,46 @@ test("the app's copy of moods.ts is identical to the server's", { skip }, async 
 });
 
 const moods = new URL('../../app/src/moods.ts', import.meta.url);
-const { FRAMES, compact, moodOf, moodOfMany } = skip ? ({} as any) : await import(moods.href);
+const { gesture, home, compact, moodOf, moodOfMany } = skip ? ({} as any) : await import(moods.href);
+const MOODS = ['awake', 'working', 'waiting', 'resting', 'failed', 'offline', 'looking'];
 
 test("Toto's face: every frame is five characters, and a nose", { skip }, () => {
-  for (const [mood, frames] of Object.entries(FRAMES) as [string, any[]][]) {
-    assert.ok(frames.length > 0, mood);
-    for (const frame of frames) {
-      assert.equal(frame.face.length, 5, `${mood}: "${frame.face}"`);
-      assert.equal([...frame.nose].length, 1, `${mood}: nose "${frame.nose}"`);
-      assert.ok(frames.length === 1 || frame.ms > 0, `${mood}: a moving face needs a time on every frame`);
+  for (const mood of MOODS) {
+    assert.equal(home(mood).face.length, 5, mood);
+    // Many goes, to reach every gesture.
+    for (let i = 0; i < 300; i++) {
+      const frames = gesture(mood);
+      assert.ok(frames.length > 0, mood);
+      assert.equal(frames[0].face, home(mood).face, `${mood}: a gesture starts at home`);
+      for (const frame of frames) {
+        assert.equal(frame.face.length, 5, `${mood}: "${frame.face}"`);
+        assert.equal([...frame.nose].length, 1, `${mood}: nose "${frame.nose}"`);
+        assert.ok(frames.length === 1 || frame.ms > 0, `${mood}: a moving face needs a time on every frame`);
+        assert.ok(frame.extra.length <= 4, `${mood}: "${frame.extra}" must fit beside the face`);
+      }
     }
   }
 });
 
+test("Toto's face: moving moods vary, and failed and offline hold still", { skip }, () => {
+  for (const mood of ['awake', 'working', 'waiting', 'resting', 'looking']) {
+    const seen = new Set(Array.from({ length: 200 }, () => JSON.stringify(gesture(mood))));
+    assert.ok(seen.size > 10, `${mood} should not repeat itself`);
+  }
+  for (const mood of ['failed', 'offline']) assert.deepEqual(gesture(mood), [{ ...home(mood), ms: 0 }]);
+  // The same dice give the same gesture.
+  assert.deepEqual(gesture('awake', () => 0.3), gesture('awake', () => 0.3));
+});
+
 test("Toto's face: the one-line version drops the extras and joins what then repeats", { skip }, () => {
-  const working = compact(FRAMES.working);
+  const counting = gesture('working', () => 0);
+  assert.ok(counting.some((frame: any) => frame.extra));
+  const working = compact(counting);
   assert.ok(working.every((frame: any) => frame.extra === ''));
-  // Two frames of open eyes with dots counting become one long one.
-  assert.deepEqual(working.map((frame: any) => [frame.face, frame.ms]), [['/o o\\', 1000], ['/. .\\', 500], ['/o o\\', 500], ['/- -\\', 140]]);
-  // Resting is the same shut eyes throughout, so it holds still.
-  assert.equal(compact(FRAMES.resting).length, 1);
+  assert.deepEqual(working.map((frame: any) => frame.face), ['/o o\\', '/. .\\', '/o o\\']);
   // The total time is kept.
   const total = (frames: any[]) => frames.reduce((sum, frame) => sum + frame.ms, 0);
-  assert.equal(total(compact(FRAMES.awake)), total(FRAMES.awake));
+  assert.equal(total(working), total(counting));
 });
 
 test("Toto's face: the most pressing agent sets the mood for a group", { skip }, () => {
