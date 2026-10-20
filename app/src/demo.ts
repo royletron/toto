@@ -213,6 +213,10 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
         return;
       case 'check_update':
         return say(state());
+      case 'job_log':
+        return say({ type: 'job_log', lines: ['12:00:01 Downloading the update', '12:00:04 Checking its signature', '12:00:05 Unpacking it', '12:00:06 Installing: Setting up node', '12:00:09 Checking the new version starts', '12:00:12 Updated. (A pretend Toto, so a pretend log.)'] });
+      case 'display_log':
+        return say({ type: 'display_log', text: '--- toto-screen status\non: this machine\'s display shows Toto\'s screen\n--- systemctl status getty@tty1\nActive: active (running)\n(This is a pretend Toto, so this is pretend too.)\n' });
       default:
         return notHere();
     }

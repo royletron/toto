@@ -18,7 +18,7 @@ import { openDb, transaction } from './db.ts';
 import { importLegacy } from './legacy.ts';
 import { openMemories } from './memory.ts';
 import { openTasks } from './tasks.ts';
-import { readProgress } from './progress.ts';
+import { readLog, readProgress } from './progress.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
@@ -39,6 +39,7 @@ import {
   wifiCountry,
   wifiJoin,
   wifiList,
+  displayLog,
 } from './projects.ts';
 
 const port = Number(process.env.TOTO_PORT ?? 7860);
@@ -854,6 +855,12 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (login) keepToken(login.env, undefined);
       return refreshAgents();
     }
+    case 'job_log':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
+      return send(ws, { type: 'job_log', lines: readLog() });
+    case 'display_log':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
+      return send(ws, { type: 'display_log', text: await displayLog() });
     case 'check_update':
       await Promise.all([checkForUpdate(), checkForPlugins()]);
       return send(ws, snapshot());

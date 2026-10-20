@@ -38,3 +38,13 @@ test('without the capability to change the firewall, the helper still says so, a
   const allowed = { PATH: walled.PATH, TOTO_NO_FIREWALL_FILE: marker };
   for (const verb of ['restrict-lan', 'allow-lan']) assert.equal(spawnSync('bash', [priv, verb, 'toto-p-aaaaaaaa'], { encoding: 'utf8', env: allowed }).status, 0, verb);
 });
+
+test('the display log runs its fixed checks, shows what each said even when it failed, and takes no arguments', () => {
+  for (const name of ['getent', 'passwd', 'ls', 'cat', 'systemctl', 'sudo', 'timeout']) fake(name, `echo "${name} said $1"; exit 1`);
+  fake('journalctl', 'echo "Oct 01 getty[1]: login: PAM failure for totoscreen"; echo "Oct 01 unrelated"');
+  const { status, stdout } = run('display-log');
+  assert.equal(status, 0);
+  assert.match(stdout, /--- \/opt\/toto\/bin\/toto-screen status\n/);
+  assert.match(stdout, /--- journal\n.*PAM failure for totoscreen/);
+  assert.doesNotMatch(stdout, /unrelated/);
+});

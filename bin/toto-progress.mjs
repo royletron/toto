@@ -5,9 +5,12 @@
 // while a task is under way, and again when it starts, because an update restarts the server in the
 // middle of itself.
 import { spawn } from 'node:child_process';
-import { renameSync, writeFileSync } from 'node:fs';
+import { appendFileSync, renameSync, writeFileSync } from 'node:fs';
 
 const FILE = process.env.TOTO_PROGRESS ?? '/var/lib/toto-progress.json';
+// Every step and line of output, one per line, for the person to scroll back through. A task that
+// starts afresh begins it again; one carried on by another process (an update is two) adds to it.
+const LOG = `${FILE.replace(/\.json$/, '')}.log`;
 
 function write(record) {
   try {
@@ -17,6 +20,8 @@ function write(record) {
     // Telling people how it is going is never worth stopping for.
   }
 }
+
+const stamp = () => new Date().toTimeString().slice(0, 8);
 
 /** The last line of whatever a command printed, without the colour and cursor codes. */
 export const lastLine = (text) =>
@@ -32,7 +37,20 @@ export const lastLine = (text) =>
 export function track(task, of, from = 0) {
   let step = from;
   let last = 0;
-  const say = (text, extra = {}) => write({ task, text, step, of, ...extra });
+  let logged = '';
+  try {
+    writeFileSync(LOG, '', { flag: from ? 'a' : 'w', mode: 0o644 });
+  } catch {
+    // As with progress itself: never worth stopping for.
+  }
+  const say = (text, extra = {}) => {
+    write({ task, text, step, of, ...extra });
+    if (text === logged) return;
+    logged = text;
+    try {
+      appendFileSync(LOG, `${stamp()} ${text.replace(/\s+/g, ' ')}\n`);
+    } catch {}
+  };
   return {
     /** Moves to the next step. */
     next(text) {

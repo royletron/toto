@@ -54,6 +54,9 @@ export const run = (user: string | undefined, cwd: string, cmd: string, args: st
   return sh(file, argv, opts, input);
 };
 
+/** Why this machine's own display may not be showing Toto's screen: what its login did at this boot. */
+export const displayLog = async () => (await sh('sudo', ['-n', PRIV, 'display-log'])).stdout;
+
 /** The first `max` + 1 bytes of a file, read as a project's user, so no more can be read than that user could. Undefined if it cannot be read. */
 export async function readAs(user: string | undefined, cwd: string, path: string, max: number): Promise<Buffer | undefined> {
   const [file, args, opts] = command(user, cwd, 'head', ['-c', String(max + 1), '--', path]);

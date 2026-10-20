@@ -90,6 +90,10 @@ type Connection = {
   plugins?: Plugin[];
   /** The code to enter, and where, for a plugin sign-in that is under way. */
   pluginLogin?: { name: string; url: string; code: string };
+  /** What the Toto's own display login did at this boot, once asked for. */
+  displayLog?: string;
+  /** The steps and output of the latest update or plugin install, oldest first, once asked for. */
+  jobLog?: string[];
   /** The phones this Toto is shared with. Undefined on a Toto too old to be shared. */
   phones?: Phone[];
   /** This phone is the one that set the Toto up, and so the one that may share it and take that back. */
@@ -220,6 +224,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [live, setLive] = useState<Connection['live']>({});
   const [queued, setQueued] = useState<Connection['queued']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
+  const [displayLog, setDisplayLog] = useState<string>();
+  const [jobLog, setJobLog] = useState<string[]>();
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
   const [invite, setInvite] = useState<Invite>();
@@ -358,6 +364,13 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       case 'plugin_login':
         setPending(undefined);
         setPluginLogin({ name: msg.name, url: msg.url, code: msg.code });
+        break;
+      case 'job_log':
+        setJobLog(msg.lines);
+        break;
+      case 'display_log':
+        setPending(undefined);
+        setDisplayLog(msg.text);
         break;
       case 'image':
       case 'file': {
@@ -618,7 +631,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

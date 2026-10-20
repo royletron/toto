@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { progressText, useConnection, type Identity, type Node, type Phone } from '../connection';
@@ -6,7 +6,7 @@ import { DEMO } from '../demo';
 import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
-import { gutter } from '../theme';
+import { color, gutter } from '../theme';
 import { Btn, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 function Author({ identity }: { identity: Identity }) {
@@ -39,6 +39,30 @@ function Where({ settings }: { settings: Node }) {
       <Field label="relay" value={relay} onChangeText={setRelay} placeholder="none: local network only" keyboardType="url" />
       {changed && <Btn kind="primary" label="Save and reconnect" onPress={() => relocate({ address, relay })} disabled={!address.trim()} style={{ marginTop: 12 }} />}
     </>
+  );
+}
+
+/** The steps of the latest update, scrolling, following the end while it is still going. */
+function UpdateLog({ updating }: { updating: boolean }) {
+  const { post, jobLog, progress, status } = useConnection();
+  const [asked, setAsked] = useState(false);
+  // Open by itself while an update runs, which is when it is wanted.
+  const open = asked || updating;
+  const scroll = useRef<ScrollView>(null);
+  // Asked for again each time the job says something new, which is when there is more to read.
+  useEffect(() => {
+    if (open && status === 'open') post({ type: 'job_log' });
+    // `post` is a new function each render; asking again is for new progress, not for that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, progress, status]);
+  if (!open) return <Btn label="Show the update log" onPress={() => setAsked(true)} style={{ marginTop: 12 }} />;
+  return (
+    <View style={{ marginTop: 12, gap: 8 }}>
+      <ScrollView ref={scroll} style={{ maxHeight: 240, borderWidth: 1, borderColor: color.ghost, padding: 8 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })} nestedScrollEnabled>
+        {jobLog?.length ? jobLog.map((line, i) => <Txt key={i} small tone="ghost" selectable>{line}</Txt>) : <Txt small tone="ghost">Nothing has been logged yet.</Txt>}
+      </ScrollView>
+      {!updating && <Btn label="Hide the log" onPress={() => setAsked(false)} />}
+    </View>
   );
 }
 
@@ -118,7 +142,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, flags, progress, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, flags, progress, software, displayLog, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -214,6 +238,7 @@ export default function Device() {
               ) : (
                 <Btn label={pending?.type === 'check_update' ? 'Checking…' : 'Check for updates'} onPress={() => request({ type: 'check_update' })} busy={pending?.type === 'check_update'} disabled={software.updating || busy || status !== 'open'} />
               )}
+              {!software.container && owner && <UpdateLog updating={software.updating} />}
             </Section>
           ) : (
             <Section title="Software" about="This Toto is too old to update itself. Flash it with a newer image, or run the installer again.">
@@ -221,6 +246,15 @@ export default function Device() {
             </Section>
           )}
           <Rule />
+          {owner && software && !software.container && (
+            <>
+              <Section title="Display" about="If the screen plugged into this Toto shows a login or nothing instead of its own screen, this says what happened.">
+                <Btn label={pending?.type === 'display_log' ? 'Looking…' : 'Show what the display did'} onPress={() => request({ type: 'display_log' })} busy={pending?.type === 'display_log'} disabled={busy || status !== 'open'} />
+                {!!displayLog && <Txt small selectable style={{ marginTop: 12 }}>{displayLog}</Txt>}
+              </Section>
+              <Rule />
+            </>
+          )}
           {phones && (
             <>
               <Section

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 const file = join(mkdtempSync(join(tmpdir(), 'toto-progress-')), 'progress.json');
 process.env.TOTO_PROGRESS = file;
 const { track, lastLine } = await import('../../bin/toto-progress.mjs');
-const { readProgress } = await import('./progress.ts');
+const { readLog, readProgress } = await import('./progress.ts');
 
 test('a job says where it is up to, and the server reads it back', async () => {
   const steps = track('plugin:gh', 4);
@@ -33,4 +33,21 @@ test('what a job left long ago, or that is not a job, is not shown', () => {
   assert.deepEqual(readProgress(file), { active: false });
   assert.deepEqual(readProgress('/nowhere'), { active: false });
   assert.equal(lastLine(''), '');
+});
+
+test('every step and line of output is kept to scroll back through, a new task starts the log again and a continued one adds to it', async () => {
+  const log = file.replace(/\.json$/, '.log');
+  const first = track('update', 5);
+  first.next('Downloading the update');
+  first.next('Downloading the update');
+  await first.run('Installing', 'sh', ['-c', 'echo "Setting up   node"']);
+  first.done('Updated to 1.0.0.');
+  assert.deepEqual(readLog(log).map((l) => l.slice(9)), ['Downloading the update', 'Installing: Setting up node', 'Updated to 1.0.0.']);
+  // Another process carrying the same update on.
+  track('update', 5, 3).next('Installing');
+  assert.equal(readLog(log).length, 4);
+  // A new task, from the start.
+  track('plugin:gh', 4).next('Downloading it');
+  assert.deepEqual(readLog(log).map((l) => l.slice(9)), ['Downloading it']);
+  assert.deepEqual(readLog('/nowhere'), []);
 });

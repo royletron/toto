@@ -198,6 +198,10 @@ export type ServerMessage =
   // The answer to `plugin_login`: open `url` and enter `code` there. The device finishes by itself,
   // and says so with a new `state`, or with `failed`.
   | { type: 'plugin_login'; name: string; url: string; code: string }
+  // The answer to `display_log`: plain text, for the person to read or pass on.
+  | { type: 'display_log'; text: string }
+  // The answer to `job_log`: the latest update's or plugin install's steps and output, oldest first.
+  | { type: 'job_log'; lines: string[] }
   // The answer to `image`: piece `at` of `of`, as base64. A picture is too big to send in one message.
   | { type: 'image'; agentId: string; id: string; at: number; of: number; data: string }
   // The answer to `file`, in pieces in the same way.
@@ -274,6 +278,11 @@ export type ClientMessage =
   | { type: 'plugin_token'; name: string; token: string }
   | { type: 'plugin_logout'; name: string }
   | { type: 'check_update' }
+  // Ask why this device's own screen is not showing Toto's screen. Answered with `display_log`.
+  | { type: 'display_log' }
+  // Ask for the log of the latest update or plugin install. Answered with `job_log`, which does not
+  // answer anything else, so asking again as it goes costs the app nothing.
+  | { type: 'job_log' }
   | { type: 'update' }
   // This phone's push token, so the device can tell it when an agent needs attention.
   | { type: 'register_push'; token: string }

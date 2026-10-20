@@ -1,7 +1,7 @@
 #!/bin/bash
 # The only things toto-server may run as root: create or delete a project's Linux user, say
 # whether that user may reach the local network, list or join Wi-Fi networks, start an update, and
-# install or remove a plugin.
+# install or remove a plugin, and say why the machine's own display is not showing Toto's screen.
 # Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
 set -euo pipefail
 
@@ -25,6 +25,21 @@ case "${1:-}" in
     # installer's own business, as with an update.
     [[ "${2:-}" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || { echo "toto-priv: bad plugin name" >&2; exit 2; }
     exec /usr/bin/node /opt/toto/bin/toto-plugin.mjs "${1#plugin-}" "$2"
+    ;;
+  display-log)
+    # What the display's login did at this boot, for the app to show when the display is blank. Fixed
+    # commands, no arguments, read-only; each may fail, which is part of the answer.
+    show() { echo "--- $*"; "$@" 2>&1 | tail -n 40 || true; }
+    show /opt/toto/bin/toto-screen status
+    show getent passwd totoscreen
+    show passwd -S totoscreen
+    show ls -l /usr/local/bin/toto /usr/local/bin/toto-screen /etc/sudoers.d/toto-screen
+    show cat /etc/systemd/system/getty@tty1.service.d/zz-toto.conf
+    show systemctl status getty@tty1 --no-pager -l
+    show timeout 10 sudo -n -l -U totoscreen
+    echo "--- journal"
+    journalctl -b --no-pager -o short-monotonic -n 400 2>&1 | grep -iE 'getty|login|sudo|totoscreen|pam_|toto-screen' | tail -n 40 || true
+    exit 0
     ;;
   wifi-list)
     # In use, signal, security, name; the name last because it is the field that may contain colons.

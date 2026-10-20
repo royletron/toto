@@ -20,3 +20,12 @@ export function readProgress(file = FILE, now = Date.now()): { shown?: Progress;
     return { active: false };
   }
 }
+
+/** The last lines of what the latest root job did, oldest first: every step and line of its output. */
+export function readLog(file = `${FILE.replace(/\.json$/, '')}.log`, lines = 200): string[] {
+  try {
+    return readFileSync(file, 'utf8').split('\n').filter(Boolean).slice(-lines).map((l) => l.slice(0, 300));
+  } catch {
+    return [];
+  }
+}
