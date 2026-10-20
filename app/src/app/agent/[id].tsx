@@ -477,8 +477,11 @@ export default function AgentScreen() {
       ],
     );
 
+  // A browser cannot show a menu (see the Alert stand-in in _layout), only OK or Cancel, which would
+  // read as a question about the first item. With one item, ask about that item.
+  // ponytail: add the next action here and this needs a real menu on web.
   const more = () =>
-    Alert.alert(agent?.name ?? 'Agent', undefined, [
+    Platform.OS === 'web' ? remove() : Alert.alert(agent?.name ?? 'Agent', undefined, [
       { text: 'Delete agent', style: 'destructive', onPress: remove },
       { text: 'Cancel', style: 'cancel' },
     ]);
