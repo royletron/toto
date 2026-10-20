@@ -109,6 +109,13 @@ systemctl daemon-reload
 systemctl enable toto
 systemctl restart toto
 
+# A machine that already shows Toto's screen (an image) gets the current set-up each time, so a fix to
+# it reaches devices that are out already. This is before the exit below: an update has no terminal.
+if [ -e /etc/systemd/system/getty@tty1.service.d/zz-toto.conf ]; then
+  /opt/toto/bin/toto-screen on >/dev/null
+  systemctl start --no-block getty@tty1.service 2>/dev/null || true
+fi
+
 # Only to a person at a terminal: an update runs this too, and its output is kept in the system log.
 [ -t 1 ] || exit 0
 echo

@@ -35,6 +35,8 @@ test('the screen is put on the display, shows as on, and taken away again, leavi
   assert.match(readFileSync(join(m.root, 'etc/sudoers.d/toto-screen'), 'utf8'), /^totoscreen ALL=\(root\) NOPASSWD: \/usr\/local\/bin\/toto\n?$/);
   assert.match(readFileSync(join(m.root, 'usr/local/bin/toto-screen'), 'utf8'), /exec sudo -n \/usr\/local\/bin\/toto/);
   assert.match(readFileSync(join(m.root, 'etc/shells'), 'utf8'), /\/usr\/local\/bin\/toto-screen/);
+  // Pi OS leaves tty1's login off for its first-boot wizard to switch on; with no wizard we must.
+  assert.match(readFileSync(m.log, 'utf8'), /systemctl enable getty@tty1\.service/);
   assert.match(readFileSync(m.log, 'utf8'), /useradd --system --create-home --shell \/usr\/local\/bin\/toto-screen totoscreen/);
   // Again is harmless: the shell is listed once.
   m.run('on');

@@ -32,6 +32,9 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin totoscreen --noclear %I $TERM
 EOF
     systemctl daemon-reload 2>/dev/null || true
+    # Raspberry Pi OS ships tty1's login switched off and lets its first-boot user wizard switch it
+    # on. The image has no wizard, so without this tty1 shows the boot messages and then nothing.
+    systemctl enable getty@tty1.service 2>/dev/null || true
     echo "Toto's screen will be on this machine's display from its next start. To have it now: sudo systemctl restart getty@tty1"
     ;;
   off)
