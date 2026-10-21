@@ -193,7 +193,7 @@ export default {
     if (pathname === '/release') {
       // The latest release, for the site: GitHub does not let a page ask it directly. Whether the
       // image and the Android app are there too is checked, since they are added to a release some minutes after the rest.
-      const latest = 'https://github.com/stellar-engineering/toto/releases/latest/download';
+      const latest = 'https://github.com/royletron/toto/releases/latest/download';
       const cached = { cf: { cacheTtl: 300, cacheEverything: true } };
       const there = (name: string) => fetch(`${latest}/${name}`, { method: 'HEAD', ...cached });
       const [said, image, app] = await Promise.all([fetch(`${latest}/version`, cached), there('toto.img.xz'), there('toto.apk')]);

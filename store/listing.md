@@ -53,7 +53,7 @@ YOURS, ALL THE WAY DOWN
 
 WHAT YOU NEED
 
-• A Toto: a Raspberry Pi 4 or 5 flashed with the Toto image, or a Linux machine with Toto installed. Both are free and open source at github.com/stellar-engineering/toto.
+• A Toto: a Raspberry Pi 4 or 5 flashed with the Toto image, or a Linux machine with Toto installed. Both are free and open source at github.com/royletron/toto.
 • A Claude subscription or an Anthropic API key, for the agents to run on.
 
 No Toto yet? The app has a demo you can look around first.
@@ -69,7 +69,7 @@ No Toto yet? The app has a demo you can look around first.
 
 ## URLs
 
-- Support: https://github.com/stellar-engineering/toto/issues
+- Support: https://github.com/royletron/toto/issues
 - Marketing: https://toto.royletron.dev
 - Privacy policy: https://toto.royletron.dev/privacy
 

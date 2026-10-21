@@ -7,7 +7,7 @@
 
 Your coding agents keep working at home. Toto is a small box on your own network, a Raspberry Pi or any Linux machine, that runs your agents around the clock. You talk to them, and approve what they do, from your phone.
 
-**[toto.royletron.dev](https://toto.royletron.dev)** · [Documentation](https://toto.royletron.dev/docs) · [Latest release](https://github.com/stellar-engineering/toto/releases/latest)
+**[toto.royletron.dev](https://toto.royletron.dev)** · [Documentation](https://toto.royletron.dev/docs) · [Latest release](https://github.com/royletron/toto/releases/latest)
 
 Toto is early. It works, for the handful of people running it, and parts of it have been tested on one or two machines only. The [known limits](https://toto.royletron.dev/docs#limits) are listed honestly.
 
@@ -24,12 +24,12 @@ Toto is early. It works, for the handful of people running it, and parts of it h
 
 ## Getting one going
 
-**On a Raspberry Pi 4 or 5:** download [`toto.img.xz`](https://github.com/stellar-engineering/toto/releases/latest/download/toto.img.xz), flash it to a card with Raspberry Pi Imager (Choose OS, then Use custom), and plug the Pi in.
+**On a Raspberry Pi 4 or 5:** download [`toto.img.xz`](https://github.com/royletron/toto/releases/latest/download/toto.img.xz), flash it to a card with Raspberry Pi Imager (Choose OS, then Use custom), and plug the Pi in.
 
 **On 64-bit Debian or Raspberry Pi OS you already run:**
 
 ```sh
-git clone https://github.com/stellar-engineering/toto
+git clone https://github.com/royletron/toto
 cd toto
 sudo ./install.sh
 ```
@@ -40,7 +40,7 @@ sudo ./install.sh
 docker run -it --name toto --cap-add NET_ADMIN \
   -v toto-data:/var/lib/toto -v toto-home:/home \
   -e TOTO_ADDRESS=<this machine's address>:7860 -p 7860:7860 \
-  ghcr.io/stellar-engineering/toto
+  ghcr.io/royletron/toto
 ```
 
 It prints the address, the token and a QR code to add it in the app; `docker exec -it toto toto login` shows them again. [More on running it in Docker](https://toto.royletron.dev/docs#docker).
@@ -122,7 +122,7 @@ A fork that wants to publish its own updates needs its own key pair: replace `re
 
 ## Security
 
-How Toto keeps things private, and where it does not yet, is written up in the [documentation](https://toto.royletron.dev/docs#security). If you find a way around any of it, please report it privately through [GitHub's security advisories](https://github.com/stellar-engineering/toto/security/advisories/new) rather than in a public issue.
+How Toto keeps things private, and where it does not yet, is written up in the [documentation](https://toto.royletron.dev/docs#security). If you find a way around any of it, please report it privately through [GitHub's security advisories](https://github.com/royletron/toto/security/advisories/new) rather than in a public issue.
 
 ## Licence
 

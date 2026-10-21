@@ -18,7 +18,7 @@ import { track } from './toto-progress.mjs';
 const HOME = '/opt/toto';
 const NEXT = '/opt/toto-next';
 const PREVIOUS = '/opt/toto-previous';
-const RELEASES = process.env.TOTO_RELEASES ?? 'https://github.com/stellar-engineering/toto/releases/latest/download';
+const RELEASES = process.env.TOTO_RELEASES ?? 'https://github.com/royletron/toto/releases/latest/download';
 const BIGGEST = 50 * 1024 * 1024;
 
 const isVersion = (v) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
