@@ -23,7 +23,7 @@
 <main class="doc">
   <section>
     <h1>Privacy policy</h1>
-    <p class="dim">Last changed 8 October 2026.</p>
+    <p class="dim">Last changed 21 October 2026.</p>
     <p>Toto is a box you own that runs your coding agents, and an app for talking to it. This says what the app, the hosted relay and this site learn about you. The short version: there are no accounts, no advertising and no analytics, and what passes between your phone and your Toto is encrypted so that nobody in between, us included, can read it.</p>
     <p>Toto is published by Stellar Engineering. Questions about this policy can be raised at <a href="https://github.com/stellar-engineering/toto/issues">github.com/stellar-engineering/toto</a>.</p>
   </section>
@@ -46,12 +46,14 @@
 
   <section aria-labelledby="yours">
     <h2 id="yours">Your Toto</h2>
-    <p>Your projects, your conversations with agents, the pictures in them, your sign-in to Claude and your SSH key are kept on your Toto, which is your hardware. We have no access to it. Deleting a project or an agent in the app removes it from the Toto. "Forget this Toto" in the app removes its address and key from your phone.</p>
+    <p>Your projects, your conversations with agents, the pictures and files in them, your memories and tasks, your sign-ins to Claude and to any plugins, and your SSH key are kept on your Toto, which is your hardware. We have no access to it. Deleting a project or an agent in the app removes it from the Toto. "Forget this Toto" in the app removes its address and key from your phone.</p>
     <p>Your Toto talks to services on your behalf, under their terms and not ours:</p>
     <ul>
       <li><b>Anthropic</b>, with the Claude account or API key you signed it in with, to run your agents. What you ask an agent, and the code it reads, goes to Anthropic as it would if you ran Claude Code yourself.</li>
       <li><b>Your git host</b>, to clone and push the repositories you add.</li>
       <li><b>GitHub</b>, once a day, to see whether a new version of Toto has been released. That request carries nothing about you beyond your internet address.</li>
+      <li><b>This site</b>, to see which plugins exist, and to download the ones you install. Those requests carry nothing about you beyond your internet address and the plugin's name.</li>
+      <li><b>The service a plugin signs in to</b>, such as GitHub or Cloudflare, with the account you signed it in with.</li>
       <li><b>Whatever your agents reach</b>, such as package registries and websites, in the course of their work.</li>
     </ul>
   </section>

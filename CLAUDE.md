@@ -8,7 +8,8 @@ This repository is public. Never commit a hostname, address, token or network na
 
 - `protocol.ts`: the messages app and server exchange. Types only, imported with `import type`.
 - `server/`: runs on the Toto as the unprivileged `toto` user. Node 24 running TypeScript directly (type stripping, so erasable syntax only: no enums, no parameter properties). Records are in a SQLite file, `toto.db` in the data directory (`db.ts`): to change its layout, add a step to `MIGRATIONS` and never edit one that has shipped.
-- `bin/`: what runs as root. `toto-priv` (the only thing the server may `sudo`), `toto-update.mjs` (the updater), `toto-firstboot`, `toto-screen` (puts the live console screen on the machine's own display; the image does it at build, `toto screen on` does it elsewhere).
+- `bin/`: what runs as root. `toto-priv` (the only thing the server may `sudo`), `toto-update.mjs` (the updater), `toto-plugin.mjs` (installs a plugin by name, checked against `plugin.pub`), `toto-firstboot`, `toto-screen` (puts the live console screen on the machine's own display; the image does it at build, `toto screen on` does it elsewhere).
+- `plugins/`: plugins a Toto installs on request (`gh`, `wrangler`): a `manifest.json` and skills each. `pack.mjs` signs them into `site/plugins/` at deploy, with the `PLUGIN_KEY` secret; without it none are published. Plugins that ship with the server (browser, files, memory and tasks) are in `server/plugins/`.
 - `app/`: Expo and React Native. Read `app/AGENTS.md` first: fetch the Expo docs before using an Expo API.
 - `relay/`: a Cloudflare Worker with two Durable Objects (`Device`, `Stats`). It also serves `site/`.
 - `site/`: plain HTML, one stylesheet, one script. No build step. `site/app/` is the app built for the browser (`cd app && npx expo export -p web`, then copy `dist` there); it is generated and git-ignored.
@@ -56,7 +57,7 @@ Tests are `node --test`, next to the code as `*.test.ts` or `*.test.mjs`. No tes
 1. Bump `version` in `server/package.json`.
 2. `git tag vX.Y.Z && git push origin vX.Y.Z` (the tag must match).
 
-`.github/workflows/release.yml` then tests, bundles, signs with the `RELEASE_KEY` secret, publishes the release, tells online Totos, builds the image, and builds the Android APK if there is an `EXPO_TOKEN` secret. The private signing key exists only as that secret. `release.pub` is its public half; changing it strands every Toto already out there.
+`.github/workflows/release.yml` then tests, bundles, signs with the `RELEASE_KEY` secret, publishes the release, tells online Totos, builds the image, and builds the Android APK if there is an `EXPO_TOKEN` secret. The private signing key exists only as that secret. `release.pub` is its public half; changing it strands every Toto already out there. `plugin.pub` is the same for plugins, whose private half is the `PLUGIN_KEY` secret.
 
 A release reaches real devices as root. Before tagging, run the changed path on a real Linux install, not only the tests.
 
@@ -70,7 +71,7 @@ The iOS app is built by Xcode Cloud from the same `app-v*` tag. Its workflow liv
 
 ## Deploying the site and relay
 
-`.github/workflows/deploy.yml` deploys both when `site/` or `relay/` changes on main, if there is a `CLOUDFLARE_API_TOKEN` secret. By hand: `cd relay && npx wrangler deploy`.
+`.github/workflows/deploy.yml` deploys both when `site/`, `relay/`, `app/` or `plugins/` changes on main, if there is a `CLOUDFLARE_API_TOKEN` secret. It builds the web app into `site/app/` and signs the plugins into `site/plugins/` on the way. By hand: `cd relay && npx wrangler deploy`.
 
 Totos hold a connection to the relay. A deploy does not drop them, but a change to the frame format between relay and device must keep working with servers already installed.
 

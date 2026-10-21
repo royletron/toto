@@ -1,6 +1,6 @@
 # Toto: Plan
 
-What Toto is lives in [SPEC.md](SPEC.md). This is what has been decided, what is built, and what is left. Last updated 2026-10-07 (after the first Pi install).
+What Toto is lives in [SPEC.md](SPEC.md). This is what has been decided, what is built, and what is left. Last updated 2026-10-21 (server 0.7.3, app 1.4.2).
 
 ## Where things stand
 
@@ -9,9 +9,9 @@ What Toto is lives in [SPEC.md](SPEC.md). This is what has been decided, what is
 | M0: Walking skeleton | Done |
 | M1: Projects and agents | Done, except the Codex and Gemini chat adapters (deferred) |
 | M3: Remote access | Done on Android. iOS push is waiting on an Apple developer account |
-| M2: Onboarding | Bluetooth setup done and run on a Pi 4. Image, pairing mode and local tools in progress |
-| M4: Consumer readiness | Local-network firewall done; the rest not started |
-| M5: Web and launch | Not started |
+| M2: Onboarding | Done: Bluetooth setup, the image, pairing mode, the local `toto` tool, sharing with another phone, in-app Claude sign-in. Per-device keys and mDNS left |
+| M4: Consumer readiness | Done: firewall, signed updates on a tap, browser, files, memory and tasks, plugins (`gh`, `wrangler`), Docker image. Unattended OS and CLI updates, MCP setup, per-project credentials and other adapters left |
+| M5: Web and launch | Done: the site and docs with a live count, the web app, a public repository. Pi Imager listing and app store releases left |
 
 M3 was done before M2 because a working box already existed and reaching it from outside the house was the bigger gap.
 
@@ -34,7 +34,7 @@ M3 was done before M2 because a working box already existed and reaching it from
 | Agent concurrency | Git worktree per agent by default; an agent can share the main checkout instead |
 | Local network | Blocked per project by default, with a per-project switch |
 | Approvals | Per agent: asks first (with a push notification) or full auto. Switchable mid-conversation |
-| Model auth | An API key or a Claude subscription token, set in the device's environment file |
+| Model auth | An API key or a Claude subscription, signed in from the app; the device keeps the token |
 | Git access | One SSH key per device, shown in the app to add to a git host |
 | Push | Sent by the device through Expo's push service, with fixed text and no content |
 | Server | TypeScript on Node 24, run directly with no build step |
@@ -52,7 +52,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 - Runs each chat agent as a child process under the project's user, speaking Claude Code's streaming JSON. A conversation resumes from its session id after a restart; a turn in flight is lost.
 - Runs each of a project's terminals (a tab in the app) as a tmux session under the project's user, named for the project and tab, so tmux itself is the list of them. tmux is the terminal emulator: the server sends its finished screen whenever it changes and takes keystrokes one at a time.
 - Gives agents their credentials through a private file in the project user's home, never through sudo, which logs what it is handed.
-- Keeps state in one JSON file and one append-only log per agent, under `/var/lib/toto`.
+- Keeps projects, agents and phones in `state.json`, memories and tasks in a SQLite database (`toto.db`), and one append-only log per agent, under `/var/lib/toto`.
 - Listens on the local network and holds one outbound connection to the relay. Both carry the same encrypted frames.
 
 **App (`app/`).** Expo with Expo Router. Remembers its Toto in secure storage, connects on launch, tries the local network first and falls back to the relay, and reconnects without losing your place. Chat renders markdown with highlighted code; terminals render colour and take typing key by key.
@@ -65,12 +65,12 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 
 ### M2: Onboarding
 - Done: Bluetooth setup. The device offers a Bluetooth service through BlueZ; phone and device exchange keys and the phone lists and joins Wi-Fi and collects the device's keys. Run end to end on a Pixel against a Pi 4, except for joining a network.
-- Flashable image: the smallest official Raspberry Pi OS with Toto already installed, a token made on first boot, and a console screen in place of a login.
-- A local tool on the device (`toto`): status with the mark alive, pairing mode, Wi-Fi and rename.
+- Done: flashable image: the smallest official Raspberry Pi OS with Toto already installed, a token made on first boot, and a console screen in place of a login.
+- Done: a local tool on the device (`toto`): status with the mark alive, pairing mode, Wi-Fi and rename.
 - Per-device keys from pairing. This also gives the relay path forward secrecy, which the shared token does not.
-- Adding further devices by scanning a code from a paired phone.
+- Done: sharing a Toto with another phone or a browser by scanning a code from the phone that set it up. Each gets a key of its own, which that phone can take away.
 - Finding the device on the local network by itself (mDNS).
-- In-app sign-in for Claude, replacing hand-editing `/etc/toto.env`. Other providers follow with their adapters.
+- Done: in-app sign-in for Claude, replacing hand-editing `/etc/toto.env`. Other providers follow with their adapters.
 - Check each provider's terms on using a consumer subscription from a third-party harness before offering it to customers.
 
 ### M3: leftovers
@@ -81,7 +81,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 ### M4: Consumer readiness
 - Updates: the agent CLIs by themselves, Toto's server on a tap from signed releases, OS security patches unattended.
 - Done: a headless browser for chat agents. Chromium on the device, driven by the Chrome DevTools MCP server, with a skill on using it, both in a plugin the server hands to Claude (`server/plugins/browser`). Not yet measured on a Pi 4, and terminals do not get it.
-- Plugins, as in Decisions: the plugin key and manifest format, the `toto-priv` verb, the sign-in message in `protocol.ts` (older servers answer it with `failed`, older apps ignore it), the app screen. First plugin `gh`, signing in with GitHub's device flow; then the browser plugin moves onto the same mechanism.
+- Done: plugins, as in Decisions. `gh` (GitHub's device flow) and `wrangler` (a pasted token) are in `plugins/`, signed into `site/plugins/` at deploy. Still to do: the browser plugin onto the same mechanism. As planned: the plugin key and manifest format, the `toto-priv` verb, the sign-in message in `protocol.ts` (older servers answer it with `failed`, older apps ignore it), the app screen. First plugin `gh`, signing in with GitHub's device flow; then the browser plugin moves onto the same mechanism.
 - Done: agents can send a file to the phone. A `send_file` tool (plugin `server/plugins/files`, shipped with the server) checks the file is inside the project and at most 10 MB; the server sees the call, reads the file as the project's user, and attaches it to the tool's result by reference; the app fetches it in pieces on a tap and hands it to the share sheet. Not yet tried through a real chat. Files are only ever sent from the project's own directory, and only to phones already paired.
 - Done: debugging switches (`server/src/flags.ts`) set from Settings in the app, kept in a file of their own and read as used, so they need no restart. The first keeps the messages about subagents. A flag that is only read at start would need a restart message and a `toto-priv` verb.
 - Done: memory and tasks on the node (`server/src/memory.ts`, `tasks.ts`, `agentapi.ts`, the bundled `server/plugins/node`). Memories at three layers (agent, project, whole Toto) and a task list across projects, edited in the app. Agents call a small HTTP server on the loopback address with a token each project is given in its private env file; they write freely to their own layer and their project's, and what they write for the whole Toto waits to be accepted. A session-start hook tells an agent the titles of what applies. Tasks hold files, can be moved between agents and projects, and be pushed to a chat agent. Not yet tried with a real agent calling the tools; the real claude loads the plugin and runs the hook.
@@ -92,16 +92,16 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 - Codex and Gemini chat adapters. Full auto is straightforward for both; asking for approval needs each tool's richer host mode (`codex app-server`, Gemini's ACP), which is unproven.
 
 ### M5: Web and launch
-- A site that says what Toto is, with documentation and a live count of Totos online.
-- Web build of the app, paired by scanning a code.
-- Pi Imager listing, app store releases, public repository.
+- Done: a site that says what Toto is, with documentation and a live count of Totos online.
+- Done: web build of the app, paired by scanning a code.
+- Pi Imager listing and app store releases. Done: public repository.
 
 ## Known limits
 
 - **First setup trusts whoever is nearby.** Until a Toto has an owner, any phone in Bluetooth range can claim it; a Pi has no screen to confirm on.
-- **One shared token.** Anyone holding it has full control, and recorded traffic could be decrypted later by someone who obtained it. Fixed by M2 pairing.
+- **Keys that never change.** The phone that set a Toto up holds its token; phones and browsers it was shared with hold keys of their own. Anyone holding one has full control, and recorded traffic could be decrypted later by someone who obtained it. Fixed by per-device keys with forward secrecy.
 - **Loopback is open to agents.** The firewall keeps agents off the local network but cannot separate their own `127.0.0.1` from services on the device listening there. Closing that needs a network namespace per project.
-- **One `gh` sign-in for everything**, once plugins exist. Every project's agents can use it, so it should be as narrowly scoped as GitHub allows. Per-project sign-in would be tighter.
+- **One sign-in per plugin for everything.** Every project's agents can use a plugin's sign-in (`gh`, `wrangler`), so it should be as narrowly scoped as the service allows. Per-project sign-in would be tighter.
 - **One SSH key for everything.** Added to a git account, it gives every project's agents every repository that account can reach. Per-repository deploy keys would be tighter.
 - **Firewall rules are re-applied only at server start.** If something else wipes them while the server runs, they stay gone until it restarts.
 - **Histories are replayed whole on connect** and held in memory on both ends. This will need paging once conversations are long.

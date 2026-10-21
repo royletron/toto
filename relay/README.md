@@ -4,6 +4,9 @@ Lets the Toto app reach a device from outside its local network. The device keep
 WebSocket open to the relay; the app connects to the same place and the relay passes frames
 between them. Frames are end-to-end encrypted, so the relay cannot read them.
 
+The same Worker serves `site/`: the website, the web app at `/app` and the signed plugins at
+`/plugins`.
+
 ## Run your own
 
 You need a Cloudflare account. The free plan is enough.

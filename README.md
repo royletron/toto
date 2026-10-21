@@ -18,6 +18,8 @@ Toto is early. It works, for the handful of people running it, and parts of it h
 - **Keeps projects apart.** A project is a git repository with its own Linux user, so agents in one cannot read another's files or credentials, and cannot reach the rest of your home network unless you allow it.
 - **Works when you are out.** A relay passes messages between your phone and your Toto. Everything is encrypted between the two, so the relay cannot read any of it. You can run your own.
 - **Sets up from your phone.** A new Toto is found over Bluetooth, given your Wi-Fi, and signed in to Claude, without a keyboard or a screen.
+- **Remembers, and keeps a to-do list.** Agents keep notes for next time, for themselves, their project or the whole Toto, and share a task list you edit in the app.
+- **Takes plugins.** Signed bundles that give agents more tools, such as GitHub's `gh` and Cloudflare's `wrangler`, signed in once from your phone.
 - **Updates itself when you say.** From signed releases, checked on the device before anything is installed.
 
 ## Getting one going
@@ -43,7 +45,7 @@ docker run -it --name toto --cap-add NET_ADMIN \
 
 It prints the address, the token and a QR code to add it in the app; `docker exec -it toto toto login` shows them again. [More on running it in Docker](https://toto.royletron.dev/docs#docker).
 
-Then, in the app, choose **Find a new Toto nearby** (or scan the code, for one in Docker). The app is not in a store yet; see [Building the app](#the-app) below. The [documentation](https://toto.royletron.dev/docs) covers the rest.
+Then, in the app, choose **Find a new Toto nearby** (or scan the code, for one in Docker). The app is not in a store yet: each release has the Android app as `toto.apk`, or see [Building the app](#the-app) below. The [documentation](https://toto.royletron.dev/docs) covers the rest.
 
 ## What is in here
 
@@ -55,6 +57,8 @@ Then, in the app, choose **Find a new Toto nearby** (or scan the code, for one i
 | `site/` | The site at toto.royletron.dev. Plain HTML, CSS and a little JavaScript. |
 | `bin/` | What runs as root on a Toto: the helper the server asks for privileged things, the updater, first-boot setup. |
 | `image/` | Builds the flashable Raspberry Pi image from the official Raspberry Pi OS Lite. |
+| `plugins/` | Plugins the device can install (`gh`, `wrangler`), and `pack.mjs`, which signs them for the site to serve. The ones that ship with the server are in `server/plugins/`. |
+| `store/` | The app store listings, screenshots and notes for reviewers. |
 | `docker/` | The Dockerfile and entrypoint for the server as a container image. |
 | `protocol.ts` | The messages the app and the server exchange. Types only. |
 | `install.sh` | Installs or upgrades Toto on a machine. |
@@ -112,9 +116,9 @@ git tag v0.2.0 && git push origin v0.2.0
 
 The [workflow](.github/workflows/release.yml) tests, bundles and signs the update, publishes it with the flashable image, and tells the Totos that are online. A Toto installs an update only if it is signed with the release key, whose public half is [`release.pub`](release.pub), and is newer than what it has.
 
-The app is versioned separately: `expo.version` in `app/app.json`, tagged `app-v1.2.3` by `app/release.sh`, which builds the Android app on the machine it is run on and uploads it to EAS. App tags do not become GitHub Releases, because a Toto takes the latest release as its next update.
+The app is versioned separately: `expo.version` in `app/app.json`, tagged `app-v1.2.3`. Pushing an app tag builds the Android app on GitHub ([workflow](.github/workflows/app.yml)) and the iOS app on Xcode Cloud; `app/release.sh` does the Android build on your own machine instead. App tags do not become GitHub Releases, because a Toto takes the latest release as its next update.
 
-A fork that wants to publish its own updates needs its own key pair: replace `release.pub`, keep the private half in the `RELEASE_KEY` secret, and point `RELEASES` in `server/src/index.ts` and `bin/toto-update.mjs` at your repository.
+A fork that wants to publish its own updates needs its own key pair: replace `release.pub`, keep the private half in the `RELEASE_KEY` secret, and point `RELEASES` in `server/src/index.ts` and `bin/toto-update.mjs` at your repository. Plugins have a key of their own: replace `plugin.pub`, keep its private half in the `PLUGIN_KEY` secret, and point `PLUGINS` in `bin/toto-plugin.mjs` and `LISTED` in `server/src/plugins.ts` at where you serve them.
 
 ## Security
 

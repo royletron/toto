@@ -29,6 +29,8 @@
     <a href="#setup">Setting up from your phone</a>
     <a href="#claude">Signing in to Claude</a>
     <a href="#agents">Projects and agents</a>
+    <a href="#memory">Memory and tasks</a>
+    <a href="#plugins">Plugins</a>
     <a href="#device">On the device itself</a>
     <a href="#updating">Updating</a>
     <a href="#relay">The relay</a>
@@ -83,7 +85,7 @@ sudo ./install.sh</pre>
     <h2 id="setup">Setting up from your phone</h2>
     <h3>Over Bluetooth</h3>
     <p>A Toto that has no owner announces itself over Bluetooth. In the app choose <b>Find a new Toto nearby</b>. The app connects, shows you the Wi&#8209;Fi networks the Toto can see, and sends it the one you pick with its password. Then it collects the Toto's keys and adds it. You type nothing but the Wi&#8209;Fi password.</p>
-    <p>Once a Toto has an owner it stops announcing itself. To add another phone, or to move it to a new network, open pairing mode <a href="#device">at the device</a>. A Toto that loses its network for a minute also starts announcing again, but then only a phone that already holds its key can talk to it.</p>
+    <p>Once a Toto has an owner it stops announcing itself. To add another phone, open settings on the phone that set it up and choose <b>Share with another phone</b> under <b>Phones</b>. It shows a code for the other phone's camera, and that phone gets a key of its own, which you can take away again from the same list. To move a Toto to a new network, open pairing mode <a href="#device">at the device</a>. A Toto that loses its network for a minute also starts announcing again, but then only a phone that already holds its key can talk to it.</p>
     <h3>By address and token</h3>
     <p>A machine with no Bluetooth is added by hand: its address, such as <code>ws://192.168.1.20:7860</code>, and the token the installer printed.</p>
     <h3>In a browser</h3>
@@ -110,10 +112,33 @@ sudo ./install.sh</pre>
       <li><b>Asks, or full auto.</b> An agent that asks stops before anything risky and waits for you. One on full auto does not. You can switch at any point.</li>
       <li><b>A browser.</b> Chat agents can open pages, read them, click through them and take screenshots in a headless Chromium on the Toto, with nothing kept between sessions. It has the same reach as the project: the internet, and your home network only if you allow it.</li>
       <li><b>Pictures.</b> A screenshot an agent takes, or an image file it reads, shows in the conversation; tap it to see it full size and save it. You can send pictures to an agent too, with the + beside the message box. They are shrunk before sending and kept on the Toto with the conversation.</li>
+      <li><b>Files.</b> An agent can send you a file from its project, up to 10&nbsp;MB. It is fetched from the Toto only when you tap it, and goes straight to your phone's save and share sheet.</li>
       <li><b>Terminals.</b> Shells in the project, a tab each, typed into from your phone. They keep running when you leave and are there on every phone. Use them for anything Toto has no chat for yet, such as other coding tools.</li>
       <li><b>Home network.</b> Agents can reach the internet but not the other devices on your network, unless you allow it for that project.</li>
     </ul>
     <p>Your phone is notified when an agent stops to ask and when one finishes. The notification says only that; nothing about the work is in it.</p>
+  </section>
+
+  <section aria-labelledby="memory">
+    <h2 id="memory">Memory and tasks</h2>
+    <p>A Toto keeps notes for its agents, and a list of things to do across all your projects. Both live on the Toto, and you read and change them in the app.</p>
+    <ul>
+      <li><b>Memory, in three layers:</b> one agent's own, a whole project's, and the whole Toto's. Agents write freely to their own layer and their project's. What they write for the whole Toto waits until you accept it.</li>
+      <li><b>At the start of a conversation</b> an agent is told the titles of what applies to it, and reads the ones it needs.</li>
+      <li><b>Tasks</b> belong to a project, can carry files and tags, and can be moved between projects and agents. Hand one to a chat agent and it starts on it. Agents can add and update the tasks of their own project.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="plugins">
+    <h2 id="plugins">Plugins</h2>
+    <p>Plugins give agents more tools. Install them from settings, under <b>Plugins</b>. There are two so far:</p>
+    <ul>
+      <li><b>gh</b>, GitHub's command line, for pull requests, issues and checks. Signing in shows a code to enter on GitHub's page.</li>
+      <li><b>wrangler</b>, Cloudflare's command line, for Workers, D1, R2 and KV. Signing in takes an API token you make on Cloudflare's dashboard and paste into the app.</li>
+    </ul>
+    <p>A plugin is signed in once per Toto, and every project's agents use that sign-in. The token stays on the Toto, in a private file.</p>
+    <p>Every plugin is signed, and a Toto checks it against a key of its own before installing anything. The site hosts them but is not believed: a plugin that was changed on the way fails the check and is dropped. Nothing in a plugin is run as root; it names packages, at exact versions, for the Toto to install.</p>
+    <p>The browser, sending files, and memory and tasks come with Toto and need no installing.</p>
   </section>
 
   <section aria-labelledby="device">
@@ -166,7 +191,7 @@ npx wrangler deploy</pre>
       <li><b>Every connection is encrypted between your phone and your Toto,</b> at home and through the relay alike. Each one starts with fresh random values from both ends, and messages that are forged, repeated or out of order are thrown away.</li>
       <li><b>Bluetooth setup has its own key exchange,</b> so your Wi&#8209;Fi password is not readable in the air. A Toto that has an owner mixes its key into that exchange, so a stranger nearby gets no answer.</li>
       <li><b>Projects are separated by the operating system.</b> One Linux user each, a private home directory, and a firewall rule keeping it off your home network.</li>
-      <li><b>The part of Toto that listens to the network is not root.</b> It can ask a small helper to do five things as root: make or remove a project's user, open or close the home network to it, list or join Wi&#8209;Fi, and start an update, which the helper fetches and checks for itself.</li>
+      <li><b>The part of Toto that listens to the network is not root.</b> It can ask a small helper for a short list of things as root: make or remove a project's user, open or close the home network to it, list or join Wi&#8209;Fi and set its country, install or remove a plugin by name, read why the device's own display is blank, and start an update. The helper fetches and checks updates and plugins for itself.</li>
       <li><b>Secrets stay off command lines and out of logs.</b> Credentials reach agents through a private file, and what you type into a terminal goes down a private pipe.</li>
     </ul>
   </section>
@@ -175,8 +200,9 @@ npx wrangler deploy</pre>
     <h2 id="limits">Known limits</h2>
     <ul>
       <li><b>First setup trusts whoever is nearby.</b> Until a Toto has an owner, any phone in Bluetooth range can claim it. A Pi has no screen to confirm on.</li>
-      <li><b>One key per Toto.</b> Every phone you add holds the same token. Someone who recorded your traffic and later got that token could read it.</li>
+      <li><b>Keys do not change.</b> The phone that set a Toto up holds its token, and each phone it is shared with holds a key of its own, but none of them is replaced over time. Someone who recorded your traffic and later got one could read what was sent with it.</li>
       <li><b>One SSH key per Toto.</b> Added to your git account, it reaches every repository that account can.</li>
+      <li><b>One sign-in per plugin.</b> Every project's agents can use it, so make it as narrow as the service allows.</li>
       <li><b>An agent can still reach services on the Toto's own loopback address.</b></li>
       <li><b>The relay has no usage limits yet.</b></li>
       <li><b>Only Claude Code has a chat.</b> Other tools run in a project's terminal.</li>

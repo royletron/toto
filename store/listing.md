@@ -39,6 +39,8 @@ WHAT YOU CAN DO
 • Allow or deny anything risky with one tap. Or put an agent on full auto.
 • Get a notification when an agent stops to ask, and when one finishes.
 • See the screenshots your agents take, and send them pictures.
+• Save the files your agents send you, and keep a task list and notes they can read.
+• Add plugins, such as GitHub's and Cloudflare's command lines, and sign them in from your phone.
 • Open a terminal on your Toto and type into it from your phone.
 • Share a Toto with another phone or a browser by scanning a code, and take that access back whenever you like.
 
