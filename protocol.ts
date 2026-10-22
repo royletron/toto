@@ -24,7 +24,8 @@ export type AgentEvent =
   // `id` is the id of the tool call waiting on a decision.
   | { type: 'approval_request'; id: string; name: string; input: unknown }
   | { type: 'approval_resolved'; id: string; allowed: boolean }
-  | { type: 'done'; isError: boolean }
+  // `stopped`: the turn ended because someone pressed stop, not because it finished or failed.
+  | { type: 'done'; isError: boolean; stopped?: boolean }
   | { type: 'error'; message: string };
 
 // --- Setting a device up over Bluetooth, before the phone can reach it any other way.
@@ -304,6 +305,8 @@ export type ClientMessage =
   | { type: 'steer'; agentId: string; index: number }
   // Takes the `index`th waiting message back.
   | { type: 'unqueue'; agentId: string; index: number }
+  // Stops the turn in progress. Open approvals are refused, and what is waiting stays waiting.
+  | { type: 'interrupt'; agentId: string }
   // Ask for a picture from an agent's conversation. It comes back as `image` messages.
   | { type: 'image'; agentId: string; id: string }
   // Ask for a file an agent sent. It comes back as `file` messages.

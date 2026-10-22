@@ -15,7 +15,7 @@ import { Btn, Empty, Header, Loading, Reaching, Screen, Spinner, Txt, Waiting, s
 const NO_EVENTS: AgentEvent[] = [];
 
 type Row =
-  | { kind: 'user' | 'text' | 'error'; text: string; images?: ImageRef[] }
+  | { kind: 'user' | 'text' | 'error' | 'note'; text: string; images?: ImageRef[] }
   | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }; decision?: 'waiting' | boolean; children: Row[] };
 type ToolItem = Extract<Row, { kind: 'tool' }>;
 
@@ -54,6 +54,7 @@ function toRows(events: AgentEvent[], mode?: Mode): Row[] {
       const row = tools.get(e.id);
       if (row) row.result = { output: e.output, isError: e.isError, images: e.images, files: e.files };
     } else if (e.type === 'error') rows.push({ kind: 'error', text: e.message });
+    else if (e.type === 'done' && e.stopped) rows.push({ kind: 'note', text: 'Stopped.' });
     else if (e.type === 'done' && e.isError) rows.push({ kind: 'error', text: 'Stopped on an error.' });
   }
   return rows;
@@ -294,12 +295,14 @@ function Chat({ agentId }: { agentId: string }) {
   // answers until the agent says they are settled. Local network or relay, that is usually a blink.
   const [sent, setSent] = useState<{ text: string; after: number }>();
   const [deciding, setDeciding] = useState<Record<string, boolean>>({});
+  const [stopping, setStopping] = useState(false);
   // A dropped line takes whatever was in flight with it, so stop saying it is on its way.
   const [wasOnline, setWasOnline] = useState(online);
   if (wasOnline !== online) {
     setWasOnline(online);
     setSent(undefined);
     setDeciding({});
+    setStopping(false);
   }
   const unechoed = sent && events.length <= sent.after ? sent.text : undefined;
 
@@ -318,6 +321,16 @@ function Chat({ agentId }: { agentId: string }) {
 
   // Partway through a turn, what is sent waits for the turn to end; a waiting message can then be sent in at once, to steer.
   const midTurn = state === 'working' || state === 'waiting';
+  if (stopping && !midTurn) setStopping(false);
+  // With nothing typed, the one button stops the turn instead of queueing.
+  const canStop = midTurn && !draft.trim() && !attached.length;
+  const stop = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setStopping(true);
+    post({ type: 'interrupt', agentId });
+  };
+  // Claude asking a question: the answer goes in the question's own box, so the usual one is put away.
+  const asking = rows.some((r) => r.kind === 'tool' && [r, ...callsIn(r)].some((t) => t.decision === 'waiting' && t.name === 'AskUserQuestion' && questionsIn(t.input).length > 0));
   const send = () => {
     if (!draft.trim() && !attached.length) return;
     say(agentId, draft, attached, midTurn);
@@ -358,6 +371,8 @@ function Chat({ agentId }: { agentId: string }) {
             <View style={local.text}>
               <Markdown text={item.text} />
             </View>
+          ) : item.kind === 'note' ? (
+            <Txt tone="ghost" style={local.text}>{item.text}</Txt>
           ) : (
             <Txt tone="raspberry" style={local.text} selectable>{item.text}</Txt>
           )
@@ -405,6 +420,7 @@ function Chat({ agentId }: { agentId: string }) {
           </>
         }
       />
+      {!asking && (<>
       <View style={{ backgroundColor: color.bezel }}>
         <Attachments attached={attached} onRemove={(i) => setAttached((have) => have.filter((_, at) => at !== i))} />
       </View>
@@ -436,8 +452,13 @@ function Chat({ agentId }: { agentId: string }) {
           accessibilityLabel="Message"
         />
         <Btn label="+" spoken="Add pictures" onPress={attach} busy={choosing} disabled={!online || attached.length >= 4} style={{ paddingHorizontal: 14 }} />
-        <Btn kind="primary" label={midTurn ? 'Queue' : 'Send'} spoken={midTurn ? 'Queue until it has finished' : undefined} onPress={send} disabled={!online || (!draft.trim() && !attached.length)} />
+        {canStop ? (
+          <Btn kind="danger" label="Stop" spoken="Stop what it is doing" onPress={stop} busy={stopping} disabled={!online} />
+        ) : (
+          <Btn kind="primary" label={midTurn ? 'Queue' : 'Send'} spoken={midTurn ? 'Queue until it has finished' : undefined} onPress={send} disabled={!online || (!draft.trim() && !attached.length)} />
+        )}
       </View>
+      </>)}
     </View>
   );
 }

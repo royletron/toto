@@ -95,4 +95,26 @@ test('a message sent mid-turn can wait for the turn to end, be taken back, or go
   phone.send({ type: 'prompt', agentId: agent.id, text: 'after the crash', later: true });
   assert.deepEqual((await phone.next('queue')).items, [{ text: 'after the crash' }]);
   await eventually('what waited is said after the crash', () => said('after the crash') === 1);
+
+  // Stop: the open approvals are refused, the turn ends as stopped and not failed, and what was waiting stays waiting.
+  await eventually('the new turn to ask', () => questions() >= 4);
+  phone.send({ type: 'prompt', agentId: agent.id, text: 'held', later: true });
+  assert.deepEqual((await phone.next('queue')).items, [{ text: 'held' }]);
+  const from = phone.said.length;
+  const since = () => phone.said.slice(from).filter((m) => m.type === 'event').map((m) => m.event);
+  phone.send({ type: 'interrupt', agentId: agent.id });
+  await eventually('the turn ends as stopped', () => since().some((e) => e.type === 'done'));
+  assert.deepEqual(since().find((e) => e.type === 'done'), { type: 'done', isError: false, stopped: true });
+  assert.equal(since().filter((e) => e.type === 'approval_resolved' && !e.allowed).length, 2);
+  assert.ok(!since().some((e) => e.type === 'text'), 'Claude\'s note about the interruption is not shown as its words');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(said('held'), 0);
+  assert.deepEqual(phone.said.findLast((m) => m.type === 'queue').items, [{ text: 'held' }]);
+
+  // The next turn is an ordinary one again.
+  phone.send({ type: 'steer', agentId: agent.id, index: 0 });
+  await eventually('a waiting message can still be sent in', () => said('held') === 1);
+  for (const id of ['t1', 't2']) phone.send({ type: 'approve', agentId: agent.id, id, allow: true });
+  await eventually('it finishes as usual', () => since().filter((e) => e.type === 'done').length === 2);
+  assert.deepEqual(since().filter((e) => e.type === 'done')[1], { type: 'done', isError: false });
 });

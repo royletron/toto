@@ -84,6 +84,12 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
   let next = 0;
   const id = () => `d${String(++next).padStart(7, '0')}`;
   const later = (ms: number, what: () => void) => setTimeout(what, ms);
+  // Each agent's turn, counted, so what a stopped turn had lined up does nothing when it comes due.
+  const turns: Record<string, number> = {};
+  const soon = (agentId: string, ms: number, what: () => void) => {
+    const turn = turns[agentId];
+    later(ms, () => turn === turns[agentId] && what());
+  };
   const state = (): ServerMessage => ({
     type: 'state', name, claude: 'subscription', projects, agents, identity: { name: 'Demo', email: 'demo@example.com' },
     version: 'demo', updating: false, phones: [], owner: true,
@@ -198,6 +204,14 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
         return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] ?? [] });
       case 'approve':
         return decide(msg.agentId, msg.id, msg.allow);
+      case 'interrupt': {
+        if (!working.has(msg.agentId)) return;
+        turns[msg.agentId] = (turns[msg.agentId] ?? 0) + 1;
+        working.delete(msg.agentId);
+        const log = logs[msg.agentId] ?? [];
+        for (const e of log) if (e.type === 'approval_request' && !log.some((r) => r.type === 'approval_resolved' && r.id === e.id)) emit(msg.agentId, { type: 'approval_resolved', id: e.id, allowed: false });
+        return emit(msg.agentId, { type: 'done', isError: false, stopped: true });
+      }
       case 'term_list':
         return say({ type: 'terms', projectId: msg.projectId, ids: shells });
       case 'term_open':
@@ -227,12 +241,12 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     working.add(agentId);
     emit(agentId, { type: 'user', text });
     const call = id();
-    later(1200, () => emit(agentId, { type: 'tool_call', id: call, name: 'Bash', input: { command: 'npm test' } }));
-    later(1600, () => {
+    soon(agentId, 1200, () => emit(agentId, { type: 'tool_call', id: call, name: 'Bash', input: { command: 'npm test' } }));
+    soon(agentId, 1600, () => {
       const auto = agents.find((a) => a.id === agentId)?.mode === 'auto';
       emit(agentId, { type: 'approval_request', id: call, name: 'Bash', input: { command: 'npm test' } });
       // A real Toto allows it a moment after asking, in a message of its own.
-      if (auto) later(150, () => decide(agentId, call, true));
+      if (auto) soon(agentId, 150, () => decide(agentId, call, true));
     });
   }
 
@@ -254,10 +268,10 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
 
   function decide(agentId: string, call: string, allow: boolean) {
     emit(agentId, { type: 'approval_resolved', id: call, allowed: allow });
-    if (!allow) return void later(600, () => finish(agentId));
-    later(1400, () => emit(agentId, { type: 'tool_result', id: call, output: 'Tests: 41 passed, 41 total', isError: false }));
-    later(2400, () => emit(agentId, { type: 'text', text: REPLY }));
-    later(2500, () => finish(agentId));
+    if (!allow) return void soon(agentId, 600, () => finish(agentId));
+    soon(agentId, 1400, () => emit(agentId, { type: 'tool_result', id: call, output: 'Tests: 41 passed, 41 total', isError: false }));
+    soon(agentId, 2400, () => emit(agentId, { type: 'text', text: REPLY }));
+    soon(agentId, 2500, () => finish(agentId));
   }
 }
 

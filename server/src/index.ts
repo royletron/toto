@@ -298,6 +298,8 @@ const delta = (agent: AgentRecord, text: string) => {
 // restart of the server forgets it; write it beside the conversation if that proves to matter.
 const queues = new Map<string, { text: string; images: ImageRef[] }[]>();
 const MAX_QUEUED = 10;
+// Agents whose turn is being stopped. The turn they end is not followed by what was waiting, nor a "done" notification.
+const stopping = new Set<string>();
 const tellQueue = (agentId: string) =>
   broadcast({ type: 'queue', agentId, items: (queues.get(agentId) ?? []).map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
 
@@ -305,6 +307,7 @@ const tellQueue = (agentId: string) =>
 function deliver(agent: AgentRecord, text: string, pictures: { ref: ImageRef; mime: string; data: string }[]) {
   emit(agent, { type: 'user', text, ...(pictures.length ? { images: pictures.map((p) => p.ref) } : null) });
   thinking.add(agent.id);
+  stopping.delete(agent.id); // a stop that came too late for the last turn is not for this one
   (running.get(agent.id) ?? start(agent)).send(text, pictures);
 }
 
@@ -348,6 +351,9 @@ function giveTask(agent: AgentRecord, task: ReturnType<typeof tasks.list>[number
 }
 
 const emit = (agent: AgentRecord, event: AgentEvent) => {
+  const stopped = event.type === 'done' && stopping.delete(agent.id);
+  // Claude ends a stopped turn as an error; it is not one. Older apps ignore `stopped` and see a quiet end.
+  if (stopped) event = { type: 'done', isError: false, stopped: true };
   // Whatever was being written comes before whatever happened next.
   flushDeltas(agent.id);
   if (!logs.has(agent.id)) return; // deleted while its process was still winding down
@@ -362,7 +368,7 @@ const emit = (agent: AgentRecord, event: AgentEvent) => {
   // What was waiting goes in when the turn ends, even when Claude died partway through it, or it would wait for ever.
   // One more thing waiting means it is not finished, so nobody needs telling it is.
   const over = event.type === 'done' || event.type === 'error';
-  if (over && !sayNext(agent) && event.type === 'done') notify('done', agent);
+  if (over && !stopped && !sayNext(agent) && event.type === 'done') notify('done', agent);
 };
 
 // Approvals left open by a previous run have nobody to answer to any more.
@@ -406,6 +412,7 @@ const start = (agent: AgentRecord) => {
     onExit: () => {
       running.delete(agent.id);
       thinking.delete(agent.id);
+      stopping.delete(agent.id);
     },
   });
   running.set(agent.id, proc);
@@ -738,6 +745,10 @@ async function handle(msg: ClientMessage, ws: Client) {
       waiting.splice(msg.index, 1);
       return tellQueue(agent.id);
     }
+    case 'interrupt':
+      if (!agent || !thinking.has(agent.id) || !running.has(agent.id)) return;
+      stopping.add(agent.id);
+      return running.get(agent.id)!.interrupt();
     case 'approve':
       if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true, answersOf(msg.answers));
       return;

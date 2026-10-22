@@ -83,6 +83,8 @@ export function toEvents(msg: any, keep?: Keep): AgentEvent[] {
   // Messages from inside a subagent say which call started it.
   const parent: { parent?: string } = typeof msg.parent_tool_use_id === 'string' && msg.parent_tool_use_id ? { parent: msg.parent_tool_use_id } : {};
   return content.flatMap((b: any): AgentEvent[] => {
+    // Claude's own note, as if from the person, that a turn was stopped: the stop is shown as such instead.
+    if (b.type === 'text' && msg.type === 'user' && /^\[Request interrupted by user/.test(b.text)) return [];
     if (b.type === 'text') return [{ type: 'text', text: b.text, ...parent }];
     if (b.type === 'tool_use') return [{ type: 'tool_call', id: b.id, name: b.name, input: b.input, ...parent }];
     if (b.type === 'tool_result') {
@@ -210,6 +212,8 @@ export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onDelta,
       write({ type: 'control_request', request_id: 'stop', request: { subtype: 'interrupt' } });
       child.stdin.end();
     },
+    /** Stops the turn in progress. Claude cancels its open approvals itself, and ends the turn with an error result. */
+    interrupt: () => write({ type: 'control_request', request_id: `interrupt-${Date.now()}`, request: { subtype: 'interrupt' } }),
     /** Answers an open approval. Ignores ids that are unknown or already answered. */
     resolve: (id: string, allow: boolean, answers?: Record<string, string>) => {
       const p = pending.get(id);
