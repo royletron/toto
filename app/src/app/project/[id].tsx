@@ -33,13 +33,14 @@ function AgentRow({ agent }: { agent: Agent }) {
 }
 
 function StartAgent({ projectId }: { projectId: string }) {
-  const { request, busy, status } = useConnection();
+  const { request, busy, status, paused } = useConnection();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   // What it is called if the person does not say; a new one each time the form is opened.
   const [suggested, setSuggested] = useState(agentName);
   const [worktree, setWorktree] = useState(true);
   const [auto, setAuto] = useState(false);
+  if (paused) return null;
   // Nothing can be asked of a Toto that is not there, and asking would silently do nothing.
   if (status !== 'open')
     return (
@@ -74,7 +75,7 @@ function StartAgent({ projectId }: { projectId: string }) {
 
 export default function ProjectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { projects, agents, post, node, loaded, pending } = useConnection();
+  const { projects, agents, post, node, loaded, pending, paused } = useConnection();
   const router = useRouter();
   const project = projects.find((p) => p.id === id);
 
@@ -124,16 +125,18 @@ export default function ProjectScreen() {
                 <Txt tone="ghost" small>Shells in this project, to run anything by hand. They keep running when you leave.</Txt>
               </Pressable>
               <TagList projectId={id} />
-              {project?.lan !== undefined && (
+              {project?.lan !== undefined && !paused && (
                 <View style={[styles.row, { paddingVertical: 8 }]}>
                   <Check label="Let agents reach devices on your home network" value={project.lan} onChange={(allow) => post({ type: 'set_lan', projectId: id, allow })} />
                   <Txt tone="ghost" small>{project.lan ? 'Agents here can talk to your router, other computers and anything else on your network.' : 'Agents here can reach the internet, but nothing else on your network.'}</Txt>
                 </View>
               )}
               {/* Out of the way at the end of the list: rarely wanted, and never by accident. */}
-              <Pressable onPress={remove} style={styles.row} accessibilityRole="button">
-                <Txt tone="raspberry">Delete this project</Txt>
-              </Pressable>
+              {!paused && (
+                <Pressable onPress={remove} style={styles.row} accessibilityRole="button">
+                  <Txt tone="raspberry">Delete this project</Txt>
+                </Pressable>
+              )}
             </>
           }
         />

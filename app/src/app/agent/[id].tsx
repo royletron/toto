@@ -147,6 +147,14 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
 
   // The moment the whole app exists for: an agent has stopped and is waiting on you.
   const questions = row.name === 'AskUserQuestion' ? questionsIn(row.input) : [];
+  const { paused } = useConnection();
+  if (row.decision === 'waiting' && paused)
+    return (
+      <View style={local.ask}>
+        <Txt tone="tube" weight="bold">{questions.length ? 'Claude has a question' : `Wants to use ${toolLabel(row.name)}`}</Txt>
+        <Txt tone="tube" small style={{ marginTop: 4 }}>Waiting for an answer. This phone is paused, so it cannot give one.</Txt>
+      </View>
+    );
   if (row.decision === 'waiting' && deciding)
     return (
       <View style={local.ask} accessibilityLiveRegion="polite">
@@ -264,7 +272,7 @@ function AgentCard({ row, agentId, online, deciding, decide }: { row: ToolItem; 
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, live: written, queued, activity, agents, status, synced, post, say, draftOf, keepDraft, drafts } = useConnection();
+  const { events: all, live: written, queued, activity, agents, status, synced, post, say, draftOf, keepDraft, drafts, paused } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
   const mode = agents.find((a) => a.id === agentId)?.mode;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
@@ -420,7 +428,12 @@ function Chat({ agentId }: { agentId: string }) {
           </>
         }
       />
-      {!asking && (<>
+      {paused && (
+        <View style={local.composer}>
+          <Txt tone="ghost" style={{ flex: 1, paddingVertical: 11 }}>This phone is paused. You can follow along, but not send anything.</Txt>
+        </View>
+      )}
+      {!asking && !paused && (<>
       <View style={{ backgroundColor: color.bezel }}>
         <Attachments attached={attached} onRemove={(i) => setAttached((have) => have.filter((_, at) => at !== i))} />
       </View>

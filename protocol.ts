@@ -83,7 +83,11 @@ export type TermKey =
 
 /** How this device's agents are signed in to Claude, if they are. */
 /** A phone a device was shared with. `pending` until it has used its invitation. */
-export type Phone = { id: string; name: string; added: number; pending: boolean };
+/**
+ * A phone this device is shared with. `projects`: the only ones it may see, or absent for all of them,
+ * new ones included. `paused`: it may look but not change anything.
+ */
+export type Phone = { id: string; name: string; added: number; pending: boolean; projects?: string[]; paused?: boolean };
 
 /**
  * A plugin: something that can be added to this device. `version` is set once it is installed;
@@ -171,6 +175,9 @@ export type ServerMessage =
       /** The phones this device has been shared with, and whether the phone being told is the one that owns it. */
       phones: Phone[];
       owner: boolean;
+      /** What the phone being told may do, when it is one shared in with limits: see `Phone`. */
+      paused?: boolean;
+      limited?: boolean;
       /** Absent from a Toto that predates plugins. */
       plugins?: Plugin[];
       /** Absent from a Toto that predates them. */
@@ -248,6 +255,8 @@ export type ClientMessage =
   // Owner only: invite another phone, called `name` in the list; and take a phone's access away.
   | { type: 'share'; name: string }
   | { type: 'revoke'; phoneId: string }
+  // Owner only: what a phone shared in may see and do. `projects` absent means every project, new ones too.
+  | { type: 'set_access'; phoneId: string; projects?: string[]; paused: boolean }
   // The only thing an invitation may say: swap it for a key of this phone's own.
   | { type: 'join' }
   // Owner only: add a plugin to this device (or bring it up to date), take it away, and sign in

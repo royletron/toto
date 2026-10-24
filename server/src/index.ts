@@ -53,7 +53,8 @@ const relayUrl = process.env.TOTO_RELAY_URL;
 // A phone this device was shared with. Its `key` is its own secret, never the device's token, so
 // it can be taken away without disturbing anyone else. While `invite` is set it is an unused
 // invitation, good until that time and for nothing but collecting a fresh key.
-type PhoneRecord = { id: string; name: string; key: string; added: number; invite?: number; push?: string[] };
+// `projects`: the only ones it may see, or absent for every project. `paused`: it may look but not change anything.
+type PhoneRecord = { id: string; name: string; key: string; added: number; invite?: number; push?: string[]; projects?: string[]; paused?: boolean };
 /** `phone` is who is at the other end when it is not the owner; `close` hangs up on them. */
 type Client = { send: (msg: ServerMessage) => void; close: () => void; phone?: PhoneRecord; /** Pictures being sent to an agent, piece by piece, until a prompt uses them. */ uploads?: Map<string, string[]> };
 const INVITE_FOR = 10 * 60_000;
@@ -211,7 +212,7 @@ const snapshot = (): ServerMessage => ({
   latest: latest === version ? undefined : latest,
   updating,
   progress,
-  phones: livePhones().map(({ id, name, added, invite }) => ({ id, name, added, pending: !!invite })),
+  phones: livePhones().map(({ id, name, added, invite, projects, paused }) => ({ id, name, added, pending: !!invite, ...(projects ? { projects } : null), ...(paused ? { paused } : null) })),
   // Each client is told the truth about itself as its copy is sent (see accept).
   owner: true,
   plugins: describe(installed(), offered),
@@ -224,6 +225,92 @@ function livePhones() {
   const live = state.phones.filter((p) => !p.invite || p.invite > Date.now());
   if (live.length !== state.phones.length) state.phones = live;
   return live;
+}
+
+// --- What a phone shared in may see and do. The owner's phone, which has no record here, may do anything.
+
+const sees = (phone: PhoneRecord | undefined, projectId: string | undefined) => !phone?.projects || (!!projectId && phone.projects.includes(projectId));
+const projectOfAgent = (agentId: unknown) => state.agents.find((a) => a.id === agentId)?.projectId;
+
+/** A message as this phone is to be told it: with what it may not see taken out, or nothing at all. */
+function view(phone: PhoneRecord | undefined, m: ServerMessage): ServerMessage | undefined {
+  if (m.type === 'state') m = { ...m, owner: !phone, ...(phone?.paused ? { paused: true } : null), ...(phone?.projects ? { limited: true } : null) };
+  if (!phone?.projects) return m;
+  const agentSeen = (id: string | undefined) => sees(phone, projectOfAgent(id));
+  switch (m.type) {
+    case 'state':
+      return { ...m, projects: m.projects.filter((p) => sees(phone, p.id)), agents: m.agents.filter((a) => sees(phone, a.projectId)) };
+    case 'event':
+    case 'delta':
+    case 'queue':
+    case 'draft':
+    case 'image':
+      return agentSeen(m.agentId) ? m : undefined;
+    case 'file': // an agent's, or a task's
+      return agentSeen(m.agentId) || sees(phone, tasks.get(m.agentId)?.projectId) ? m : undefined;
+    case 'drafts':
+      return { ...m, items: Object.fromEntries(Object.entries(m.items).filter(([id]) => agentSeen(id))) };
+    case 'memories':
+      return { ...m, items: m.items.filter((x) => x.layer === 'node' || (x.layer === 'project' ? sees(phone, x.scope) : agentSeen(x.scope))) };
+    case 'tasks':
+      return { ...m, items: m.items.filter((t) => sees(phone, t.projectId)) };
+    case 'terms':
+      return sees(phone, m.projectId) ? m : undefined;
+  }
+  return m;
+}
+
+// What a paused phone may still ask for: nothing that changes anything. (Watching a terminal is checked where it opens.)
+const READS = new Set(['sync', 'ping', 'image', 'file', 'task_file', 'term_list', 'term_open', 'term_close', 'register_push', 'unregister_push', 'check_update']);
+
+/**
+ * The projects a message reaches into, or undefined for one about the whole Toto. An id that is not
+ * there gives a project nobody may see, so it is refused rather than guessed at.
+ */
+function projectsOf(msg: ClientMessage): string[] | undefined {
+  const none = '';
+  const ofTask = (id: unknown) => tasks.get(id)?.projectId ?? none;
+  const ofMemory = (m?: { layer: string; scope?: string }) => (!m ? [none] : m.layer === 'node' ? undefined : [m.layer === 'project' ? m.scope ?? none : projectOfAgent(m.scope) ?? none]);
+  switch (msg.type) {
+    case 'sync':
+    case 'ping':
+    case 'register_push':
+    case 'unregister_push':
+    case 'check_update':
+    case 'upload': // pieces of a picture or file, which the message that uses them is checked for
+    case 'term_close':
+      return [];
+    case 'term_input':
+      return [terminals.get(msg.terminalId)?.projectId ?? none];
+    case 'memory_save':
+      return ofMemory({ layer: msg.layer, scope: msg.scope })?.concat(typeof msg.id === 'string' ? ofMemory(memories.get(msg.id)) ?? [none] : []);
+    case 'memory_accept':
+    case 'memory_delete':
+      return ofMemory(memories.get(msg.id));
+    case 'task_save':
+      return [msg.projectId, ...(typeof msg.id === 'string' ? [ofTask(msg.id)] : [])];
+    case 'task_delete':
+    case 'task_attach':
+    case 'task_detach':
+      return [ofTask(msg.id)];
+    case 'task_file':
+      return [ofTask(msg.taskId)];
+    case 'task_push':
+      return [ofTask(msg.id), projectOfAgent(msg.agentId) ?? none];
+  }
+  if ('projectId' in msg) return [msg.projectId];
+  if ('agentId' in msg) return [projectOfAgent(msg.agentId) ?? none];
+  return undefined;
+}
+
+/** Throws, in words for the person, if this phone may not do what it asks. */
+function mayDo(phone: PhoneRecord | undefined, msg: ClientMessage) {
+  if (!phone) return;
+  if (phone.paused && !READS.has(msg.type)) throw new Error('This phone is paused. It can see what is going on, but not change anything.');
+  if (!phone.projects) return;
+  const reaches = projectsOf(msg);
+  if (!reaches) throw new Error('Only a phone that can see every project can change that.');
+  if (!reaches.every((id) => sees(phone, id))) throw new Error('That project is not shared with this phone.');
 }
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
@@ -271,8 +358,13 @@ const commit = () => {
 };
 
 /** Tells every registered phone, and forgets any that have since uninstalled. */
-const notify = (kind: PushKind, agent: AgentRecord) =>
-  void push(state.pushTokens, kind, agent.id, { name: state.name, id: deviceId }).then((dead) => {
+const notify = (kind: PushKind, agent: AgentRecord) => {
+  // Not to a phone that cannot see the agent, nor asking one that is paused for an answer it cannot give.
+  const left = state.phones.filter((p) => !sees(p, agent.projectId) || (kind === 'approval' && p.paused)).flatMap((p) => p.push ?? []);
+  notifyAll(state.pushTokens.filter((t) => !left.includes(t)), kind, agent);
+};
+const notifyAll = (tokens: string[], kind: PushKind, agent: AgentRecord) =>
+  void push(tokens, kind, agent.id, { name: state.name, id: deviceId }).then((dead) => {
     if (!dead.length) return;
     state.pushTokens = state.pushTokens.filter((t) => !dead.includes(t));
     save();
@@ -476,6 +568,7 @@ function installedPlugin(ws: Client, name: unknown) {
 }
 
 async function handle(msg: ClientMessage, ws: Client) {
+  mayDo(ws.phone, msg);
   const agent = 'agentId' in msg ? state.agents.find((a) => a.id === msg.agentId) : undefined;
   switch (msg?.type) {
     case 'share': {
@@ -496,6 +589,18 @@ async function handle(msg: ClientMessage, ws: Client) {
       state.pushTokens = state.pushTokens.filter((t) => !gone.push?.includes(t));
       for (const client of [...clients]) if (client.phone === gone) client.close();
       return commit();
+    }
+    case 'set_access': {
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can change what another phone may do.');
+      const phone = state.phones.find((p) => p.id === msg.phoneId);
+      if (!phone) throw new Error('That phone is not shared with any more.');
+      if (msg.projects !== undefined && !(Array.isArray(msg.projects) && msg.projects.every((id) => typeof id === 'string'))) throw new Error('Pick the projects it may see.');
+      phone.projects = msg.projects && state.projects.filter((p) => msg.projects!.includes(p.id)).map((p) => p.id);
+      phone.paused = msg.paused === true || undefined;
+      commit();
+      // Its connections start again, so what it holds is what it may now see and not what it saw before.
+      for (const client of [...clients]) if (client.phone === phone) client.close();
+      return;
     }
     case 'sync':
       if (!state.claimed) {
@@ -638,6 +743,8 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (!project || !isTerminalId(id)) return;
       let term = terminals.get(id);
       if (term && term.projectId !== project.id) return;
+      // Opening a tab that is not there makes one, which a paused phone may not.
+      if (ws.phone?.paused && !term && !(await listTerminals(shell(project))).some((t) => t === id)) throw new Error('This phone is paused. It can watch the terminals there are, but not open new ones.');
       const size = (n: unknown, max: number) => Math.min(max, Math.max(10, Math.floor(Number(n)) || 10));
       await openTerminal(shell(project), id, size(msg.cols, 300), size(msg.rows, 100));
       term = terminals.get(id);
@@ -941,7 +1048,11 @@ function accept(wire: { send: (frame: string) => void; close: () => void }) {
         const { seal } = secure;
         client = {
           phone,
-          send: (m) => wire.send(JSON.stringify({ t: 'data', b: seal(JSON.stringify(m.type === 'state' ? { ...m, owner: !phone } : m)) } satisfies Frame)),
+          send: (m) => {
+            // Every message to a phone goes through here, so this is the one place what it may see is decided.
+            const seen = view(phone, m);
+            if (seen) wire.send(JSON.stringify({ t: 'data', b: seal(JSON.stringify(seen)) } satisfies Frame));
+          },
           close: () => {
             closed();
             wire.close();

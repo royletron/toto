@@ -57,10 +57,12 @@ function Lists() {
 }
 
 function AddProject() {
-  const { request, busy, sshKey, status } = useConnection();
+  const { request, busy, sshKey, status, paused, limited } = useConnection();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [repo, setRepo] = useState('');
+  // A phone given some projects, or paused, cannot add one; the Toto would refuse it.
+  if (paused || limited) return null;
   // Nothing can be asked of a Toto that is not there, and asking would silently do nothing.
   if (status !== 'open')
     return (

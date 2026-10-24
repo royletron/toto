@@ -98,6 +98,9 @@ type Connection = {
   phones?: Phone[];
   /** This phone is the one that set the Toto up, and so the one that may share it and take that back. */
   owner: boolean;
+  /** Limits the owner set on this phone: `paused`, it can look but not change anything; `limited`, it sees only some projects. */
+  paused: boolean;
+  limited: boolean;
   /** The invitation just made for another phone, until `doneSharing` puts it away. */
   invite?: Invite;
   doneSharing: () => void;
@@ -228,6 +231,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [jobLog, setJobLog] = useState<string[]>();
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [limited, setLimited] = useState(false);
   const [invite, setInvite] = useState<Invite>();
   const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean; container?: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
@@ -294,6 +299,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         });
         setPhones(msg.phones);
         setOwner(msg.owner ?? true);
+        setPaused(!!msg.paused);
+        setLimited(!!msg.limited);
         setPending(undefined);
         setLoaded(true);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
@@ -477,6 +484,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setSoftware(undefined);
     setPhones(undefined);
     setOwner(true);
+    setPaused(false);
+    setLimited(false);
     setInvite(undefined);
     if (!to) return setStatus('setup');
     setStatus('reconnecting');
@@ -631,7 +640,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

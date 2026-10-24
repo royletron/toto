@@ -7,7 +7,7 @@ import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
 import { color, gutter } from '../theme';
-import { Btn, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
+import { Btn, Check, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 function Author({ identity }: { identity: Identity }) {
   const { request, busy, pending } = useConnection();
@@ -67,6 +67,42 @@ function UpdateLog({ updating }: { updating: boolean }) {
 }
 
 /** Who else has this Toto, and letting another phone in. Only the phone that set it up sees the controls. */
+/** What another phone may see and do: which projects (every one, new ones too, or those picked) and whether it is paused. */
+function Access({ phone }: { phone: Phone }) {
+  const { projects, request, pending, busy, status } = useConnection();
+  const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(!phone.projects);
+  const [picked, setPicked] = useState(phone.projects ?? []);
+  const [paused, setPaused] = useState(!!phone.paused);
+  const shown = (phone.projects ?? []).filter((id) => projects.some((p) => p.id === id)).length;
+  const summary = `${phone.projects ? `${shown} of ${projects.length} projects` : 'every project'}${phone.paused ? ', paused' : ''}`;
+  if (!open)
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <Txt tone={phone.projects || phone.paused ? 'amber' : 'ghost'} small style={{ flex: 1 }}>Sees {summary}</Txt>
+        <Btn label="Change" onPress={() => { setAll(!phone.projects); setPicked(phone.projects ?? []); setPaused(!!phone.paused); setOpen(true); }} disabled={busy || status !== 'open'} style={{ minHeight: 32, paddingHorizontal: 12 }} />
+      </View>
+    );
+  const save = () => {
+    request({ type: 'set_access', phoneId: phone.id, ...(all ? null : { projects: picked }), paused });
+    setOpen(false);
+  };
+  return (
+    <View style={{ gap: 2, marginBottom: 12 }}>
+      <Check label="Every project, and new ones as they are added" value={all} onChange={setAll} />
+      {!all && projects.map((p) => (
+        <Check key={p.id} label={p.name} value={picked.includes(p.id)} onChange={(on) => setPicked((have) => (on ? [...have, p.id] : have.filter((id) => id !== p.id)))} />
+      ))}
+      {!all && <Txt tone="ghost" small>A project added later stays hidden from {phone.name} until you tick it here.</Txt>}
+      <Check label="Paused: it can look, but not change anything" value={paused} onChange={setPaused} />
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+        <Btn kind="primary" label="Save" onPress={save} busy={pending?.type === 'set_access'} disabled={busy || status !== 'open'} style={{ flex: 1 }} />
+        <Btn label="Cancel" onPress={() => setOpen(false)} />
+      </View>
+    </View>
+  );
+}
+
 function Phones({ phones }: { phones: Phone[] }) {
   const { owner, invite, doneSharing, request, pending, busy, status } = useConnection();
   const { width } = useWindowDimensions();
@@ -95,7 +131,7 @@ function Phones({ phones }: { phones: Phone[] }) {
       <View style={{ gap: 14 }}>
         <Txt weight="bold">Scan this with {invited.name}’s camera.</Txt>
         <QR value={inviteLink(invite)} size={Math.min(width - 2 * gutter, 340)} label={`Invitation code for ${invited.name}`} />
-        <Txt tone="ghost" small>It needs the Toto app installed. The code works once, for ten minutes, and whoever scans it gets the same access to this Toto as you. Show it only to them.</Txt>
+        <Txt tone="ghost" small>It needs the Toto app installed. The code works once, for ten minutes, and whoever scans it can see and change every project until you limit it here. Show it only to them.</Txt>
         <Waiting hint={`Open the camera on ${invited.name} and point it at the code.`} after={0}>Waiting for it to be scanned…</Waiting>
         <Btn label="Cancel the invitation" onPress={() => { request({ type: 'revoke', phoneId: invite.phoneId }); doneSharing(); }} />
       </View>
@@ -111,12 +147,15 @@ function Phones({ phones }: { phones: Phone[] }) {
       )}
       {invite && (!invited || invited.pending) && <Txt tone="amber" style={{ marginBottom: 8 }}>That invitation ran out without being used.</Txt>}
       {phones.map((phone) => (
-        <View key={phone.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 }}>
+        <View key={phone.id}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 }}>
           <View style={{ flex: 1 }}>
             <Txt weight="bold" numberOfLines={1}>{phone.name}</Txt>
             <Txt tone="ghost" small>{phone.pending ? 'invited, has not joined yet' : `joined ${new Date(phone.added).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}</Txt>
           </View>
           <Btn kind="danger" label="Remove" busy={pending?.type === 'revoke' && pending.phoneId === phone.id} onPress={() => remove(phone)} disabled={busy || !online} style={{ minHeight: 36, paddingHorizontal: 12 }} />
+        </View>
+        <Access phone={phone} />
         </View>
       ))}
       <Txt tone="ghost" small style={{ marginTop: 8 }}>For a browser, open toto.royletron.dev/app on the computer and point this phone’s camera at the code it shows.</Txt>
