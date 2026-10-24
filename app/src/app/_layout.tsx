@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, View, type AlertButton } from 'react-native';
+import { Alert, Platform, ScrollView, View, type AlertButton } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
 import { Face } from '../face';
 import { Adding } from '../add';
@@ -64,7 +64,8 @@ function Setup() {
     );
   return (
     <Screen bare>
-      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
+      {/* Scrolls, because on a small phone, or with the keyboard up, the form is taller than the screen. */}
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: gutter, paddingVertical: 24, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
         <Face mood={trying ? 'looking' : 'awake'} size={52} nose style={{ marginBottom: 28 }} />
         <Txt weight="bold" style={{ fontSize: size.display, lineHeight: size.display * 1.1, letterSpacing: -2 }} accessibilityRole="header">
           toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
@@ -73,7 +74,7 @@ function Setup() {
         <NodeForm onTrying={setTrying} onNearby={Platform.OS === 'web' ? undefined : () => setNearby(true)} onCancel={Platform.OS === 'web' ? () => setByHand(false) : undefined} />
         <Txt tone="ghost" small>Someone sharing theirs with you? Point this phone’s camera at the code on their screen.</Txt>
         <Btn label="No Toto yet? Look around a demo" onPress={addDemo} style={{ marginTop: 20 }} />
-      </View>
+      </ScrollView>
     </Screen>
   );
 }
