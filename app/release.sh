@@ -43,7 +43,7 @@ apk="$out/toto-$version.apk"
 echo "Building the APK here…"
 eas build --platform android --profile preview --local --non-interactive --output "$apk"
 echo "Putting it on EAS…"
-eas upload --platform android --build-path "$apk" --non-interactive
+eas upload --platform android --build-path "$apk" --non-interactive || echo "warning: the build was not uploaded to EAS." >&2
 
 if [ "${1:-}" = --play ]; then
   aab="$out/toto-$version.aab"
