@@ -63,11 +63,11 @@ A release reaches real devices as root. Before tagging, run the changed path on 
 
 ### The app has versions of its own
 
-The app's version is `expo.version` in `app/app.json`, and its releases are tagged `app-v1.2.3`. To release the app: bump that version, commit, push, then `git tag app-vX.Y.Z && git push origin app-vX.Y.Z`. `.github/workflows/app.yml` checks the tag, builds the Android APK and uploads it to EAS. `app/release.sh` does the same from a machine with the Android SDK and an `eas login`, and pushes the tag itself (so the workflow then builds it a second time); `--play` also sends it to Play's internal testing.
+The app's version is `expo.version` in `app/app.json`, and its releases are tagged `app-v1.2.3`. To release the app: bump that version, commit, push, then `git tag app-vX.Y.Z && git push origin app-vX.Y.Z`. `.github/workflows/app.yml` checks the tag, builds the Android APK, attaches it to a GitHub pre-release and uploads it to EAS (where a refusal is only a warning). `app/release.sh` does the same from a machine with the Android SDK and an `eas login`, and pushes the tag itself (so the workflow then builds it a second time); `--play` also sends it to Play's internal testing.
 
 The iOS app is built by Xcode Cloud from the same `app-v*` tag. Its workflow lives in App Store Connect, not here; what is here is `app/ios/ci_scripts/`, the only part of `ios/` in git. `ci_post_clone.sh` generates the project (and puts itself back, because prebuild in CI clears the folder), refuses a tag that is not app.json's version, and takes Xcode Cloud's build count as the build number. To try it: clone fresh, then `CI_TAG=app-v<version> CI_BUILD_NUMBER=1 sh app/ios/ci_scripts/ci_post_clone.sh`.
 
-**Never make a GitHub Release for an app tag.** Totos update from `releases/latest`, and the site reads it too; an app release there would be offered to every Toto as a server update and fail. Server tags are `v*`, app tags are `app-v*`, and the two workflows match on exactly those.
+**An app tag's GitHub Release must be a pre-release.** Totos update from `releases/latest`, and the relay and site read it too; GitHub never counts a pre-release as the latest, but an ordinary app release would be offered to every Toto as a server update and fail. Server tags are `v*`, app tags are `app-v*`, and the two workflows match on exactly those.
 
 ## Deploying the site and relay
 

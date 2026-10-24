@@ -1,7 +1,9 @@
 # An app release is a tag, app-v1.2.3. This checks the tag says what the app says and that the
-# app at that commit is sound, then builds the Android app and puts it on EAS. (Xcode Cloud
-# builds the iOS app from the same tag.) It makes no GitHub Release, on purpose: Totos update
-# from the latest one. Run by hand, it builds whatever branch it is run on.
+# app at that commit is sound, then builds the Android app, attaches it to a GitHub Release and
+# puts it on EAS. (Xcode Cloud builds the iOS app from the same tag.) That release is marked a
+# pre-release on purpose: Totos, the relay and the site all take releases/latest as the newest
+# server, and GitHub never counts a pre-release as the latest. Run by hand, it builds whatever
+# branch it is run on and releases nothing.
 name: App release
 on:
   push:
@@ -32,6 +34,8 @@ jobs:
     needs: check
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: write
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN || secrets.EXPO_SECRET }}
     steps:
@@ -47,13 +51,22 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Build, and put it on EAS
+      - name: Build
         working-directory: app
         run: |
           test -n "$EXPO_TOKEN" || { echo "::error::No EXPO_TOKEN secret."; exit 1; }
           npm ci
           npx eas-cli@latest build --platform android --profile preview --local --non-interactive --output "$GITHUB_WORKSPACE/toto.apk"
-          npx eas-cli@latest upload --platform android --build-path "$GITHUB_WORKSPACE/toto.apk" --non-interactive
+      - name: Release it on GitHub
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" toto.apk --prerelease --latest=false --title "Toto app ${GITHUB_REF_NAME#app-v}" --notes "The Android app, to install directly. The iOS app is on TestFlight."
+      # EAS limits how many builds are uploaded; the GitHub Release is the one that matters.
+      - name: Put it on EAS
+        working-directory: app
+        run: npx eas-cli@latest upload --platform android --build-path "$GITHUB_WORKSPACE/toto.apk" --non-interactive || echo "::warning::The build was not uploaded to EAS."
+
       - uses: actions/upload-artifact@v4
         with:
           name: toto-android
