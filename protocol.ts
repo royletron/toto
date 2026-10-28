@@ -221,7 +221,15 @@ export type ServerMessage =
   // Words a chat agent is writing now, a few at a time. Not part of its history: the whole `text`
   // event follows, and replaces them.
   | { type: 'delta'; agentId: string; text: string }
-  | { type: 'event'; agentId: string; event: AgentEvent }
+  // `at` is the event's place in the agent's history, counted from 0, so the app can tell if one went missing.
+  | { type: 'event'; agentId: string; event: AgentEvent; at?: number }
+  // Sent in answer to `sync` before an agent's events: they are events number `from` onwards of its
+  // history. If the app holds up to there it keeps what it has and adds them; if not it starts again
+  // from them. An older device does not send it, which means the whole history, from 0.
+  | { type: 'history'; agentId: string; from: number }
+  // The answer to `older`: events number `from` onwards, up to where it was asked about. It sends a
+  // page (about a hundred events, fewer if they are large) so that it fits in a message.
+  | { type: 'older'; agentId: string; from: number; events: AgentEvent[] }
   // Sent once after `sync` has been answered in full; events after this are happening now.
   | { type: 'synced' }
   // A terminal's screen, sent to clients that have it open: recent scrollback and the
@@ -239,8 +247,13 @@ export type ServerMessage =
 
 /** Client -> server. */
 export type ClientMessage =
-  // First message of a connection: asks for the state and every agent's history.
-  | { type: 'sync' }
+  // First message of a connection: asks for the state and every agent's history. `have` is how far
+  // into each agent's history this app already holds (the number of events from the very start), so
+  // only what comes after need be sent. For an agent it holds nothing of, only the last `tail` events
+  // are sent, and the rest can be had with `older`. An older device ignores both and sends everything.
+  | { type: 'sync'; have?: Record<string, number>; tail?: number }
+  // The page of an agent's history that ends just before event number `before`. Answered with `older`.
+  | { type: 'older'; agentId: string; before: number }
   // First message of a connection that only wants to know the device is there.
   | { type: 'ping' }
   | { type: 'rename_device'; name: string }

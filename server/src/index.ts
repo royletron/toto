@@ -118,7 +118,7 @@ const plugged = () => loginNames().forEach((name) => secretNames.add(name));
 plugged();
 useTokens();
 const claude = (): ClaudeAccount => (process.env.CLAUDE_CODE_OAUTH_TOKEN ? 'subscription' : process.env.ANTHROPIC_API_KEY ? 'api_key' : 'none');
-// ponytail: every log is held in memory and replayed whole on connect. Page it when logs get long.
+// ponytail: every log is held in memory, and a phone that has none of it is sent it whole. Page it when logs get long.
 const logs = new Map<string, AgentEvent[]>(
   state.agents.map((a) => [
     a.id,
@@ -451,7 +451,7 @@ const emit = (agent: AgentRecord, event: AgentEvent) => {
   if (!logs.has(agent.id)) return; // deleted while its process was still winding down
   logs.get(agent.id)!.push(event);
   appendFileSync(logFile(agent.id), JSON.stringify(event) + '\n');
-  broadcast({ type: 'event', agentId: agent.id, event });
+  broadcast({ type: 'event', agentId: agent.id, event, at: logs.get(agent.id)!.length - 1 });
   if (event.type === 'approval_request') {
     if (agent.mode === 'auto' && !asksUser(event.name)) running.get(agent.id)?.resolve(event.id, true);
     else notify('approval', agent);
@@ -608,7 +608,16 @@ async function handle(msg: ClientMessage, ws: Client) {
         save();
       }
       send(ws, snapshot());
-      for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
+      // A history only grows, so a phone that has the first `have` events of one needs only the rest.
+      // One that has none of it, or a count that makes no sense (more than there are), gets the last
+      // `tail` and can ask for earlier ones when they are wanted.
+      const tail = Number.isInteger(msg.tail) && msg.tail! > 0 ? msg.tail! : Infinity;
+      for (const [agentId, log] of logs) {
+        const had = msg.have && typeof msg.have === 'object' && Object.hasOwn(msg.have, agentId) ? msg.have[agentId] : 0;
+        const from = Number.isInteger(had) && had > 0 && had <= log.length ? had : Math.max(0, log.length - tail);
+        send(ws, { type: 'history', agentId, from });
+        for (let i = from; i < log.length; i++) send(ws, { type: 'event', agentId, event: log[i], at: i });
+      }
       send(ws, { type: 'memories', items: memories.list() });
       send(ws, { type: 'tasks', items: tasks.list() });
       send(ws, { type: 'tags', items: tasks.tags() });
@@ -616,6 +625,18 @@ async function handle(msg: ClientMessage, ws: Client) {
       // Every agent's, empty ones too: a phone that was away when a line emptied still shows what was in it.
       for (const agent of state.agents) send(ws, { type: 'queue', agentId: agent.id, items: (queues.get(agent.id) ?? []).map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
       return send(ws, { type: 'synced' });
+    case 'older': {
+      const log = logs.get(msg.agentId);
+      if (!log || !Number.isInteger(msg.before)) throw new Error('That conversation is not here any more.');
+      const before = Math.min(Math.max(msg.before, 0), log.length);
+      // A hundred events, or fewer if they are big: a message the relay will pass on.
+      let from = before;
+      for (let size = 0; from > 0 && before - from < 100; from--) {
+        size += JSON.stringify(log[from - 1]).length;
+        if (size > 100_000 && from < before) break;
+      }
+      return send(ws, { type: 'older', agentId: msg.agentId, from, events: log.slice(from, before) });
+    }
     case 'ping':
       return send(ws, { type: 'pong', name: state.name });
     case 'rename_device':

@@ -7,6 +7,7 @@ import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
 import type { Invitation, Invite } from './invite';
 import { read, write } from './storage';
+import { addEarlier, joinHistories } from './history';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
@@ -22,6 +23,8 @@ export type TermScreen = { screen: string; cursor: { row: number; col: number } 
 export type Activity = 'idle' | 'working' | 'waiting' | 'failed';
 
 const RETRY_AFTER = 3_000;
+// How much of an agent's history is asked for when nothing of it is held; the rest is fetched on scrolling up.
+const FIRST_PAGE = 100;
 // A picture is sent to an agent in pieces of this many base64 characters.
 const PIECE = 64_000;
 const STORE_KEY = 'toto.nodes';
@@ -114,6 +117,10 @@ type Connection = {
   sshKey?: string;
   /** Each agent's history, by agent id. */
   events: Record<string, AgentEvent[]>;
+  /** How many events of each agent's history come before the first held. Above 0, scrolling up has more to fetch. */
+  earlier: Record<string, number>;
+  /** Fetches the page before the earliest event held for an agent. */
+  loadEarlier: (agentId: string) => void;
   /** What each chat agent is doing, by agent id. */
   activity: Record<string, Activity>;
   /** How many agents are in each state that matters at a glance. */
@@ -236,6 +243,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [invite, setInvite] = useState<Invite>();
   const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean; container?: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
+  const [earlier, setEarlier] = useState<Record<string, number>>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
   const [terminals, setTerminals] = useState<Connection['terminals']>({});
   const [drafts, setDrafts] = useState<Connection['drafts']>({});
@@ -259,9 +267,30 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   // Histories being replayed. They are shown all at once when the replay ends, so a reconnect
   // swaps the old conversation for the new one instead of emptying the screen and refilling it.
   const replay = useRef<Connection['events']>({});
+  // Where in an agent's history what is being replayed continues from; with no entry, it is all of it.
+  const continues = useRef<Record<string, number>>({});
+  // How far into each history what is held reaches, for asking only for the rest when the line comes back.
+  const held = useRef<Record<string, number>>({});
+  // Where in each history the next event should be, to notice if one went missing.
+  const expected = useRef<Record<string, number>>({});
+  // The place in each history that the first event held has. A device sends only the end of a history
+  // we have none of, and the rest is fetched when it is scrolled to.
+  const starts = useRef<Record<string, number>>({});
+  const asked = useRef<Record<string, number>>({});
   const tries = useRef(0);
   // A name chosen while adding a Toto, to give the device once we are talking to it.
   const naming = useRef<{ id: string; name: string } | undefined>(undefined);
+
+  // The histories held, and the place in each that the first event held has. Kept in refs as well as state,
+  // so that joining a replay or an earlier page onto them does not depend on when React gets to it.
+  const eventsNow = useRef<Connection['events']>({});
+  const keepEvents = (events: Connection['events'], from = starts.current) => {
+    eventsNow.current = events;
+    starts.current = from;
+    setEvents(events);
+    setEarlier(from);
+    held.current = Object.fromEntries(Object.entries(events).map(([id, list]) => [id, (from[id] ?? 0) + list.length]));
+  };
 
   const remember = (change: (was: Saved) => Saved) =>
     setSaved((was) => {
@@ -274,6 +303,23 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     remember((was) => (was.nodes.some((n) => n.id === id && n.name !== name) ? { ...was, nodes: was.nodes.map((n) => (n.id === id ? { ...n, name } : n)) } : was));
 
   const post = (message: ClientMessage) => link.current?.send(message);
+
+  /** Asks again for whatever is missing after what is held. */
+  const resync = () => {
+    caughtUp.current = false;
+    replay.current = {};
+    continues.current = {};
+    expected.current = {};
+    post({ type: 'sync', have: { ...held.current }, tail: FIRST_PAGE });
+  };
+
+  /** Fetches the page of an agent's history before the earliest event held. */
+  const loadEarlier = (agentId: string) => {
+    const before = starts.current[agentId];
+    if (!before || asked.current[agentId] === before) return;
+    asked.current[agentId] = before;
+    post({ type: 'older', agentId, before });
+  };
 
   const receive = (to: Node, msg: ServerMessage) => {
     switch (msg.type) {
@@ -333,21 +379,43 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         // Only once the history is in; and never more than a screenful, which the whole message then replaces.
         if (caughtUp.current) setLive((all) => ({ ...all, [msg.agentId]: ((all[msg.agentId] ?? '') + msg.text).slice(-20_000) }));
         break;
-      case 'event':
+      case 'history':
+        continues.current[msg.agentId] = msg.from;
+        expected.current[msg.agentId] = msg.from;
+        // Anything of this history that came in live before this is in what follows.
+        replay.current[msg.agentId] = [];
+        break;
+      case 'older': {
+        asked.current = {};
+        const joined = addEarlier(eventsNow.current[msg.agentId] ?? [], starts.current[msg.agentId] ?? 0, msg.from, msg.events);
+        keepEvents({ ...eventsNow.current, [msg.agentId]: joined.events }, { ...starts.current, [msg.agentId]: joined.start });
+        break;
+      }
+      case 'event': {
+        // Each says its place in the history. One that is not the next means one went missing: start again from what we hold.
+        if (msg.at !== undefined) {
+          const next = expected.current[msg.agentId];
+          if (caughtUp.current ? msg.at !== (next ?? 0) : next !== undefined && msg.at !== next) return resync();
+          expected.current[msg.agentId] = msg.at + 1;
+        }
         if (msg.event.type === 'text' || msg.event.type === 'done' || msg.event.type === 'error') setLive(({ [msg.agentId]: _written, ...rest }) => rest);
         if (!caughtUp.current) {
           (replay.current[msg.agentId] ??= []).push(msg.event);
           break;
         }
-        setEvents((all) => ({ ...all, [msg.agentId]: [...(all[msg.agentId] ?? []), msg.event] }));
+        keepEvents({ ...eventsNow.current, [msg.agentId]: [...(eventsNow.current[msg.agentId] ?? []), msg.event] });
         // An agent has just stopped to ask. Worth a tap on the wrist, but not for old history.
-        if (caughtUp.current && msg.event.type === 'approval_request' && asksYou(modes.current[msg.agentId], msg.event.name))
+        if (msg.event.type === 'approval_request' && asksYou(modes.current[msg.agentId], msg.event.name))
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
         break;
-      case 'synced':
+      }
+      case 'synced': {
         caughtUp.current = true;
-        setEvents(replay.current);
+        // What is on screen swaps for the new, joined to what we already held where only the end was sent.
+        const joined = joinHistories(eventsNow.current, starts.current, replay.current, continues.current);
+        keepEvents(joined.events, joined.starts);
         replay.current = {};
+        continues.current = {};
         setSynced(true);
         if (naming.current?.id === to.id) {
           post({ type: 'rename_device', name: naming.current.name });
@@ -357,6 +425,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         // (Not the demo: it has nothing to tell anyone, and asking to send notifications for it would be odd.)
         if (to.address !== DEMO) pushToken().then((token) => token && post({ type: 'register_push', token }));
         break;
+      }
       case 'invite':
         setPending(undefined);
         setInvite(msg);
@@ -425,7 +494,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     const cancel = reach(
       to,
       {
-        first: { type: 'sync' },
+        first: { type: 'sync', have: { ...held.current }, tail: FIRST_PAGE },
         onMessage: (msg) => wanted && receive(to, msg),
         onLost: () => again('lost'),
         onTry: (via) => wanted && setTrying((was) => ({ ...was, phase: via })),
@@ -435,9 +504,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         if (typeof result === 'string') return again(result);
         link.current = result;
         tries.current = 0;
-        // The device is about to replay every history. What is on screen stays until it has.
+        // The device is about to send the rest of every history. What is on screen stays until it has.
         caughtUp.current = false;
         replay.current = {};
+        continues.current = {};
+        expected.current = {};
+        asked.current = {};
         arriving.current = {}; // whatever was on its way went with the old line
         setScreens({});
         setVia(result.via);
@@ -463,7 +535,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setSynced(false);
     setProjects([]);
     setAgents([]);
-    setEvents({});
+    keepEvents({}, {});
+    expected.current = {};
+    asked.current = {};
     setScreens({});
     setPictures({});
     arriving.current = {};
@@ -640,7 +714,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

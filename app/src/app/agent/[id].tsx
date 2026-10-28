@@ -15,7 +15,7 @@ import { Btn, Empty, Header, Loading, Reaching, Screen, Spinner, Txt, Waiting, s
 const NO_EVENTS: AgentEvent[] = [];
 
 type Row =
-  | { kind: 'user' | 'text' | 'error' | 'note'; text: string; images?: ImageRef[] }
+  | { kind: 'user' | 'text' | 'error' | 'note'; text: string; images?: ImageRef[]; at: number }
   | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }; decision?: 'waiting' | boolean; children: Row[] };
 type ToolItem = Extract<Row, { kind: 'tool' }>;
 
@@ -25,7 +25,7 @@ const isSubagent = (row: ToolItem) => row.name === 'Agent' || row.name === 'Task
 const callsIn = (row: ToolItem): ToolItem[] => row.children.flatMap((c) => (c.kind === 'tool' ? [c, ...callsIn(c)] : []));
 
 /** Folds the event stream into what is shown: each tool call carries its own result and approval. */
-function toRows(events: AgentEvent[], mode?: Mode): Row[] {
+function toRows(events: AgentEvent[], mode?: Mode, first = 0): Row[] {
   const rows: Row[] = [];
   const tools = new Map<string, ToolItem>();
   // Where a row goes: with the call that started the subagent it happened inside, or else with the conversation.
@@ -39,9 +39,11 @@ function toRows(events: AgentEvent[], mode?: Mode): Row[] {
     }
     return row;
   };
-  for (const e of events) {
-    if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images });
-    else if (e.type === 'text') listFor(e.parent).push({ kind: 'text', text: e.text });
+  // `at` is each row's place in the history, which stays the same when earlier messages are put in front.
+  for (const [i, e] of events.entries()) {
+    const at = first + i;
+    if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images, at });
+    else if (e.type === 'text') listFor(e.parent).push({ kind: 'text', text: e.text, at });
     else if (e.type === 'tool_call') tool(e.id, e.name, e.input, e.parent);
     else if (e.type === 'approval_request') {
       const row = tool(e.id, e.name, e.input);
@@ -53,9 +55,9 @@ function toRows(events: AgentEvent[], mode?: Mode): Row[] {
     } else if (e.type === 'tool_result') {
       const row = tools.get(e.id);
       if (row) row.result = { output: e.output, isError: e.isError, images: e.images, files: e.files };
-    } else if (e.type === 'error') rows.push({ kind: 'error', text: e.message });
-    else if (e.type === 'done' && e.stopped) rows.push({ kind: 'note', text: 'Stopped.' });
-    else if (e.type === 'done' && e.isError) rows.push({ kind: 'error', text: 'Stopped on an error.' });
+    } else if (e.type === 'error') rows.push({ kind: 'error', text: e.message, at });
+    else if (e.type === 'done' && e.stopped) rows.push({ kind: 'note', text: 'Stopped.', at });
+    else if (e.type === 'done' && e.isError) rows.push({ kind: 'error', text: 'Stopped on an error.', at });
   }
   return rows;
 }
@@ -272,17 +274,19 @@ function AgentCard({ row, agentId, online, deciding, decide }: { row: ToolItem; 
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, live: written, queued, activity, agents, status, synced, post, say, draftOf, keepDraft, drafts, paused } = useConnection();
+  const { events: all, earlier: before, loadEarlier, live: written, queued, activity, agents, status, synced, post, say, draftOf, keepDraft, drafts, paused } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
+  // How many events come before the first held: what scrolling up still has to fetch.
+  const unseen = before[agentId] ?? 0;
   const mode = agents.find((a) => a.id === agentId)?.mode;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
   // What the agent is writing now, as the newest message, until the whole of it arrives and takes its place.
   const writing = written[agentId];
   const rows = useMemo(() => {
-    const done = toRows(events, mode).reverse();
-    if (writing) done.unshift({ kind: 'text', text: writing });
+    const done = toRows(events, mode, unseen).reverse();
+    if (writing) done.unshift({ kind: 'text', text: writing, at: unseen + events.length });
     return done;
-  }, [events, writing, mode]);
+  }, [events, writing, mode, unseen]);
   const [draft, setTyped] = useState(() => draftOf(agentId));
   const setDraft = (text: string) => {
     setTyped(text);
@@ -312,7 +316,7 @@ function Chat({ agentId }: { agentId: string }) {
     setDeciding({});
     setStopping(false);
   }
-  const unechoed = sent && events.length <= sent.after ? sent.text : undefined;
+  const unechoed = sent && unseen + events.length <= sent.after ? sent.text : undefined;
 
   // Pictures chosen to go with the next message.
   const [attached, setAttached] = useState<Attached[]>([]);
@@ -343,7 +347,7 @@ function Chat({ agentId }: { agentId: string }) {
     if (!draft.trim() && !attached.length) return;
     say(agentId, draft, attached, midTurn);
     // A message that waits is shown with the others that are waiting, not as one on its way.
-    if (!midTurn) setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: events.length });
+    if (!midTurn) setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: unseen + events.length });
     setDraft('');
     setAttached([]);
   };
@@ -360,7 +364,18 @@ function Chat({ agentId }: { agentId: string }) {
       <FlatList
         inverted
         data={rows}
-        keyExtractor={(_, i) => String(rows.length - i)}
+        // By place in the history, so rows keep their keys when earlier ones are put in front.
+        keyExtractor={(row) => (row.kind === 'tool' ? `tool:${row.id}` : String(row.at))}
+        // Scrolled to the top, which an inverted list calls the end: fetch the page before.
+        onEndReached={() => loadEarlier(agentId)}
+        onEndReachedThreshold={1.5}
+        ListFooterComponent={
+          unseen > 0 ? (
+            <Pressable onPress={() => loadEarlier(agentId)} style={{ paddingVertical: 12 }} accessibilityRole="button">
+              <Txt tone="ghost" small style={{ textAlign: 'center' }}>{unseen} earlier {unseen === 1 ? 'message' : 'messages'}. Scroll up for more.</Txt>
+            </Pressable>
+          ) : null
+        }
         contentContainerStyle={[{ paddingVertical: 12 }, ui.talk]}
         renderItem={({ item }) =>
           item.kind === 'tool' && isSubagent(item) ? (
