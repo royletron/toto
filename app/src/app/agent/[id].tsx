@@ -7,6 +7,7 @@ import { asksYou, useConnection, type AgentEvent, type FileRef, type ImageRef, t
 import { Markdown } from '../../markdown';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
+import { ProjectTabs } from '../../tabs';
 import { Avatar } from '../../avatar';
 import { Files } from '../../files';
 import { Attachments, Pictures, choosePictures, type Attached } from '../../pictures';
@@ -553,6 +554,7 @@ export default function AgentScreen() {
           </>
         }
       />
+      {agent && <ProjectTabs projectId={agent.projectId} current={{ kind: 'agent', id }} />}
       {!loaded ? (
         <Reaching what="the conversation" />
       ) : !agent ? (

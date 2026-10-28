@@ -129,6 +129,8 @@ type Connection = {
   screens: Record<string, TermScreen>;
   /** Each project's terminals, oldest first, by project id, once asked for with `term_list`. */
   terminals: Record<string, string[]>;
+  /** The last command typed into a terminal, by terminal id, for the ones that have had one. */
+  termTitles: Record<string, string>;
   /** Pictures fetched from the Toto so far, as base64, by picture id. */
   pictures: Record<string, string>;
   /** Fetches a picture from an agent's conversation, unless it is here or already on its way. */
@@ -246,6 +248,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [earlier, setEarlier] = useState<Record<string, number>>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
   const [terminals, setTerminals] = useState<Connection['terminals']>({});
+  const [termTitles, setTermTitles] = useState<Connection['termTitles']>({});
   const [drafts, setDrafts] = useState<Connection['drafts']>({});
   // Each keystroke lands here, not in state, so typing does not redraw the whole app.
   const typed = useRef<Record<string, string>>({});
@@ -468,6 +471,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         break;
       case 'terms':
         setTerminals((all) => ({ ...all, [msg.projectId]: msg.ids }));
+        setTermTitles((all) => ({ ...Object.fromEntries(Object.entries(all).filter(([id]) => !msg.ids.includes(id))), ...msg.titles }));
         break;
       case 'failed':
         setPending(undefined);
@@ -714,7 +718,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

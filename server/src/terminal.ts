@@ -30,6 +30,45 @@ export function tmuxKey(key: unknown): string | undefined {
   return ctrl ? `C-${ctrl[1]}` : undefined;
 }
 
+/**
+ * Follows what is typed into one terminal to know the last command run in it, for naming its tab.
+ * It goes by keystrokes, not by asking the shell, so it is a good guess and no more: a line changed
+ * by recalling history or tab completion is not known, and is left out; text typed into a program
+ * that is running counts as a command.
+ */
+export function typing() {
+  let line = '';
+  let unsure = false;
+  let last: string | undefined;
+  const enter = () => {
+    const command = line.trim();
+    const changed = !!command && !unsure && command.slice(0, 60) !== last;
+    if (command && !unsure) last = command.slice(0, 60);
+    line = '';
+    unsure = false;
+    return changed;
+  };
+  return {
+    get last() {
+      return last;
+    },
+    /** Takes in some typing; says whether the last command changed. */
+    feed(text?: string, key?: unknown) {
+      let changed = false;
+      for (const ch of text ?? '') {
+        if (ch === '\n' || ch === '\r') changed = enter() || changed;
+        else if (ch >= ' ' && ch !== '\x7f') line += ch;
+      }
+      if (key === 'enter') changed = enter() || changed;
+      else if (key === 'backspace') line = line.slice(0, -1);
+      else if (key === 'ctrl-c' || key === 'ctrl-u' || key === 'ctrl-d') [line, unsure] = ['', false];
+      // Anything else that moves about or edits the line leaves it not what was typed.
+      else if (typeof key === 'string' && !/^(pageup|pagedown)$/.test(key)) unsure = true;
+      return changed;
+    },
+  };
+}
+
 const ENSURE = `tmux has-session -t "$1" 2>/dev/null || tmux new-session -d -s "$1" -x "$2" -y "$3"; tmux resize-window -t "$1" -x "$2" -y "$3"`;
 const SCROLLBACK = 300;
 

@@ -241,7 +241,8 @@ export type ServerMessage =
   | { type: 'draft'; agentId: string; text: string }
   // A project's terminals, oldest first: the answer to `term_list`, and sent again to whoever has
   // one of them open when one is opened or ends.
-  | { type: 'terms'; projectId: string; ids: string[] }
+  // `titles` is the last command typed into each of them that has had one, for naming its tab.
+  | { type: 'terms'; projectId: string; ids: string[]; titles?: Record<string, string> }
   // A request from this client could not be carried out.
   | { type: 'failed'; message: string };
 

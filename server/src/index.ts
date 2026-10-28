@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
-import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, watchTerminal } from './terminal.ts';
+import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, typing, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
@@ -346,11 +346,15 @@ if (shells.length) {
   save();
 }
 
+// The last command typed into each terminal, by id, for naming its tab. Not kept across a restart.
+const typists = new Map<string, ReturnType<typeof typing>>();
+const titlesOf = (ids: string[]) => Object.fromEntries(ids.flatMap((id) => (typists.get(id)?.last ? [[id, typists.get(id)!.last!]] : [])));
+
 /** Tells everyone with one of a project's terminals open (and `also`) which terminals it has. */
 async function tellTerms(project: ProjectRecord, also: Iterable<Client> = []) {
   const ids = await listTerminals(shell(project));
   const watching = new Set([...also, ...[...terminals.values()].filter((t) => t.projectId === project.id).flatMap((t) => [...t.viewers])]);
-  for (const client of watching) send(client, { type: 'terms', projectId: project.id, ids });
+  for (const client of watching) send(client, { type: 'terms', projectId: project.id, ids, titles: titlesOf(ids) });
 }
 
 /** Persists projects and agents, then tells every client. */
@@ -758,7 +762,8 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'term_list': {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project) throw new Error('This project is no longer on this Toto.');
-      return send(ws, { type: 'terms', projectId: project.id, ids: await listTerminals(shell(project)) });
+      const ids = await listTerminals(shell(project));
+      return send(ws, { type: 'terms', projectId: project.id, ids, titles: titlesOf(ids) });
     }
     case 'term_open': {
       const project = state.projects.find((p) => p.id === msg.projectId);
@@ -802,13 +807,18 @@ async function handle(msg: ClientMessage, ws: Client) {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project || !isTerminalId(msg.terminalId)) return;
       await killTerminal(shell(project), msg.terminalId);
+      typists.delete(msg.terminalId);
       return tellTerms(project, [ws]);
     }
     case 'term_input': {
       // Only into a terminal this client has open, which is also what gives us somewhere to send it.
       const term = terminals.get(msg.terminalId);
       if (!term?.viewers.has(ws)) return;
-      return term.type(typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined, msg.key);
+      const text = typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined;
+      if (!typists.has(msg.terminalId)) typists.set(msg.terminalId, typing());
+      const project = state.projects.find((p) => p.id === term.projectId);
+      if (typists.get(msg.terminalId)!.feed(text, msg.key) && project) void tellTerms(project);
+      return term.type(text, msg.key);
     }
     case 'image': {
       const bytes = readImage(msg.agentId, msg.id);
