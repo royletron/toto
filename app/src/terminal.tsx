@@ -166,6 +166,9 @@ export function Terminal({ projectId, terminalId }: { projectId: string; termina
         // A real keyboard has the keys the bar below stands in for on a phone.
         onKeyPress={Platform.OS === 'web' ? hardKey : undefined}
         submitBehavior="submit"
+        // A browser's field loses focus on Return unless told not to (it ignores the line above), and then
+        // the next Tab moves the page's focus instead of reaching the terminal.
+        blurOnSubmit={false}
         onFocus={() => setTyping(true)}
         onBlur={() => setTyping(false)}
         editable={online}
