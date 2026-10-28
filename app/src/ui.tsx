@@ -130,7 +130,7 @@ export function Check({ label, value, onChange }: { label: string; value: boolea
 }
 
 /** The top line of a screen: where you are, the way back, and anything the screen adds on the right. */
-export function Header({ parent, title, right, onBack, leading }: { parent?: string; title: string; right?: ReactNode; onBack?: () => void; /** Something before the title, such as an avatar. */ leading?: ReactNode }) {
+export function Header({ parent, title, right, onBack, leading, tabs }: { parent?: string; title: string; right?: ReactNode; onBack?: () => void; /** Something before the title, such as an avatar. */ leading?: ReactNode; /** A row of tabs, in place of the title. */ tabs?: ReactNode }) {
   const router = useRouter();
   const wide = useWide();
   return (
@@ -141,8 +141,12 @@ export function Header({ parent, title, right, onBack, leading }: { parent?: str
           <Txt tone="ghost" numberOfLines={1}>{`‹ ${parent} /`}</Txt>
         </Pressable>
       )}
-      {leading}
-      <Txt weight="bold" numberOfLines={1} style={{ flex: 1 }} accessibilityRole="header">{title}</Txt>
+      {tabs ?? (
+        <>
+          {leading}
+          <Txt weight="bold" numberOfLines={1} style={{ flex: 1 }} accessibilityRole="header">{title}</Txt>
+        </>
+      )}
       {right}
     </View>
   );

@@ -7,7 +7,7 @@ import { asksYou, useConnection, type AgentEvent, type FileRef, type ImageRef, t
 import { Markdown } from '../../markdown';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
-import { ProjectTabs } from '../../tabs';
+import { ProjectTabs, useTabs } from '../../tabs';
 import { Avatar } from '../../avatar';
 import { Files } from '../../files';
 import { Attachments, Pictures, choosePictures, type Attached } from '../../pictures';
@@ -499,6 +499,7 @@ export default function AgentScreen() {
   const agent = agents.find((a) => a.id === id);
   const project = projects.find((p) => p.id === agent?.projectId);
   const auto = agent?.mode === 'auto';
+  const tabbed = useTabs(agent?.projectId);
 
   const toggleAuto = () => {
     if (auto) return post({ type: 'set_mode', agentId: id, mode: 'ask' });
@@ -543,6 +544,7 @@ export default function AgentScreen() {
         parent={project?.name ?? 'toto'}
         title={agent?.name ?? (loaded ? 'gone' : '…')}
         leading={agent ? <Avatar seed={agent.id} size={26} /> : undefined}
+        tabs={agent && tabbed ? <ProjectTabs projectId={agent.projectId} current={{ kind: 'agent', id }} /> : undefined}
         right={
           <>
             {agent && (
@@ -554,7 +556,6 @@ export default function AgentScreen() {
           </>
         }
       />
-      {agent && <ProjectTabs projectId={agent.projectId} current={{ kind: 'agent', id }} />}
       {!loaded ? (
         <Reaching what="the conversation" />
       ) : !agent ? (

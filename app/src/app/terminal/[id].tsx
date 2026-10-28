@@ -51,14 +51,13 @@ export default function TerminalScreen() {
   const small = { minHeight: 32, paddingHorizontal: 10 };
   return (
     <Screen bare>
-      <Header parent={project?.name ?? 'toto'} title="terminal" right={shown && <Btn label="Close" onPress={close} disabled={!online} spoken="Close this terminal" style={small} />} />
+      <Header parent={project?.name ?? 'toto'} title="terminal" tabs={project ? <ProjectTabs projectId={id} current={{ kind: 'term', id: shown }} making={making} onTerminal={setChosen} onNew={open} /> : undefined} right={shown && <Btn label="Close" onPress={close} disabled={!online} spoken="Close this terminal" style={small} />} />
       {!loaded ? (
         <Reaching what="this project" />
       ) : !project ? (
         <Empty mood="offline">This project is no longer on this Toto. It may have been deleted from another phone.</Empty>
       ) : (
         <>
-          <ProjectTabs projectId={id} current={{ kind: 'term', id: shown }} making={making} onTerminal={setChosen} onNew={open} />
           {/* Keyed, so switching tabs closes one session's screen and opens the other's. */}
           {shown ? <Terminal key={shown} projectId={id} terminalId={shown} /> : <Reaching what="its terminals" />}
         </>
