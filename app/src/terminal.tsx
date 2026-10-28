@@ -46,7 +46,7 @@ function spanStyle(span: Span & { cursor?: boolean }): TextStyle {
 }
 
 /** One row of the screen. Rows that have not changed are not drawn again. */
-const Line = memo(
+export const Line = memo(
   function Line({ spans }: { spans: (Span & { cursor?: boolean })[]; id: string }) {
     return (
       <Text style={local.line}>

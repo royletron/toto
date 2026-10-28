@@ -13,6 +13,7 @@ import { Joining } from '../join';
 import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { useTapped } from '../push';
+import { UpdateScreen } from '../updating';
 import { color, font, gutter, size } from '../theme';
 import { Sidebar } from '../sidebar';
 import { Btn, Screen, Txt, useWide } from '../ui';
@@ -80,10 +81,14 @@ function Setup() {
 }
 
 function Root() {
-  const { status, nodes, switchTo } = useConnection();
+  const { status, nodes, node, software, switchTo } = useConnection();
   const router = useRouter();
   const wide = useWide();
   const ready = status !== 'setup';
+  const updating = !!software?.updating;
+  const [shown, setShowing] = useState<{ node?: string; from: string }>();
+  const showing = shown?.node === node?.id ? shown : undefined;
+  const [left, setLeft] = useState<string>();
 
   // Tapping a notification opens the conversation it was about, on the Toto it came from, once
   // there are screens to open it on.
@@ -138,6 +143,13 @@ function Root() {
       </Screen>
     );
   if (status === 'setup') return <Setup />;
+  // While the Toto updates, every app takes this screen: nothing else it shows can be trusted to work,
+  // and it restarts partway through. It stays up to say how it went, and the person can leave it for
+  // their list of Totos. Kept against the Toto it is about, so another one never inherits it.
+  if (updating && !showing) setShowing({ node: node?.id, from: software!.version });
+  if (!updating && !showing && left) setLeft(undefined);
+  if ((updating || showing) && left !== node?.id)
+    return <UpdateScreen from={showing?.from ?? software?.version ?? ''} finished={!updating} onLeave={() => setLeft(node?.id)} onDone={() => setShowing(undefined)} />;
   // Open or reconnecting: keep every screen where it was, so a dropped connection costs nothing but a moment.
   const screens = <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.tube }, animation: wide ? 'none' : undefined }} />;
   if (!wide) return screens;

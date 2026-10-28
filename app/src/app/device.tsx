@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Keyboard, Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { progressText, useConnection, type Identity, type Node, type Phone } from '../connection';
@@ -6,7 +6,8 @@ import { DEMO } from '../demo';
 import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
-import { color, gutter } from '../theme';
+import { gutter } from '../theme';
+import { Transcript } from '../updating';
 import { Btn, Check, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 function Author({ identity }: { identity: Identity }) {
@@ -48,7 +49,6 @@ function UpdateLog({ updating }: { updating: boolean }) {
   const [asked, setAsked] = useState(false);
   // Open by itself while an update runs, which is when it is wanted.
   const open = asked || updating;
-  const scroll = useRef<ScrollView>(null);
   // Asked for again each time the job says something new, which is when there is more to read.
   useEffect(() => {
     if (open && status === 'open') post({ type: 'job_log' });
@@ -58,9 +58,7 @@ function UpdateLog({ updating }: { updating: boolean }) {
   if (!open) return <Btn label="Show the update log" onPress={() => setAsked(true)} style={{ marginTop: 12 }} />;
   return (
     <View style={{ marginTop: 12, gap: 8 }}>
-      <ScrollView ref={scroll} style={{ maxHeight: 240, borderWidth: 1, borderColor: color.ghost, padding: 8 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })} nestedScrollEnabled>
-        {jobLog?.length ? jobLog.map((line, i) => <Txt key={i} small tone="ghost" selectable>{line}</Txt>) : <Txt small tone="ghost">Nothing has been logged yet.</Txt>}
-      </ScrollView>
+      <Transcript lines={jobLog ?? []} height={240} />
       {!updating && <Btn label="Hide the log" onPress={() => setAsked(false)} />}
     </View>
   );

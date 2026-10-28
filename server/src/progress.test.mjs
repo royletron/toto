@@ -35,19 +35,27 @@ test('what a job left long ago, or that is not a job, is not shown', () => {
   assert.equal(lastLine(''), '');
 });
 
-test('every step and line of output is kept to scroll back through, a new task starts the log again and a continued one adds to it', async () => {
+test('what a job did is kept as a terminal would show it, with colour, to scroll back through; a new task starts it again and a continued one adds to it', async () => {
   const log = file.replace(/\.json$/, '.log');
+  const plain = (lines) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').replace(/^\d\d:\d\d:\d\d /, ''));
   const first = track('update', 5);
   first.next('Downloading the update');
-  first.next('Downloading the update');
-  await first.run('Installing', 'sh', ['-c', 'echo "Setting up   node"']);
+  // A command's own colour and its redrawn progress line both come through; its throttled summaries do not repeat it.
+  await first.run('Installing', 'sh', ['-c', 'printf "\\033[32mSetting up node\\033[0m\\n10%%\\r50%%\\r100%%\\n"']);
   first.done('Updated to 1.0.0.');
-  assert.deepEqual(readLog(log).map((l) => l.slice(9)), ['Downloading the update', 'Installing: Setting up node', 'Updated to 1.0.0.']);
+  const lines = readLog(log);
+  assert.deepEqual(plain(lines), ['Downloading the update', 'Setting up node', '100%', 'Updated to 1.0.0.']);
+  assert.ok(lines[1].includes('\x1b[32m'), 'the command keeps its colour');
+  assert.ok(lines[0].includes('\x1b[1m') && lines[3].includes('\x1b[32m'), 'steps are headed in bold and success in green');
   // Another process carrying the same update on.
   track('update', 5, 3).next('Installing');
-  assert.equal(readLog(log).length, 4);
+  assert.equal(readLog(log).length, 5);
   // A new task, from the start.
   track('plugin:gh', 4).next('Downloading it');
-  assert.deepEqual(readLog(log).map((l) => l.slice(9)), ['Downloading it']);
+  assert.deepEqual(plain(readLog(log)), ['Downloading it']);
   assert.deepEqual(readLog('/nowhere'), []);
+  // Only so much, whole lines, newest kept.
+  writeFileSync(log, Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n'));
+  assert.deepEqual(readLog(log, 3), ['line 47', 'line 48', 'line 49']);
+  assert.deepEqual(readLog(log, 400, 20), ['line 48', 'line 49']);
 });

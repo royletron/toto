@@ -21,10 +21,22 @@ export function readProgress(file = FILE, now = Date.now()): { shown?: Progress;
   }
 }
 
-/** The last lines of what the latest root job did, oldest first: every step and line of its output. */
-export function readLog(file = `${FILE.replace(/\.json$/, '')}.log`, lines = 200): string[] {
+/**
+ * The end of what the latest root job did, oldest line first, as a terminal would have shown it: colour
+ * codes are left in for the app to draw. A line that was redrawn in place (a progress bar, ending in a
+ * carriage return) is the last drawing of it.
+ */
+export function readLog(file = `${FILE.replace(/\.json$/, '')}.log`, lines = 400, bytes = 150_000): string[] {
   try {
-    return readFileSync(file, 'utf8').split('\n').filter(Boolean).slice(-lines).map((l) => l.slice(0, 300));
+    const all = readFileSync(file, 'utf8')
+      .split('\n')
+      .map((l) => l.split('\r').filter(Boolean).pop() ?? '')
+      .filter((l) => l.trim())
+      .slice(-lines)
+      .map((l) => l.slice(0, 1000));
+    // Whole lines only, so that a colour code is never cut in half; the oldest go first.
+    let size = 0;
+    return all.reverse().filter((l) => (size += l.length + 1) <= bytes).reverse();
   } catch {
     return [];
   }
