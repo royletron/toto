@@ -241,6 +241,8 @@ function view(phone: PhoneRecord | undefined, m: ServerMessage): ServerMessage |
     case 'state':
       return { ...m, projects: m.projects.filter((p) => sees(phone, p.id)), agents: m.agents.filter((a) => sees(phone, a.projectId)) };
     case 'event':
+    case 'history':
+    case 'older':
     case 'delta':
     case 'queue':
     case 'draft':

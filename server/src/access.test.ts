@@ -61,6 +61,11 @@ test('a phone shared in sees only its projects, and a paused one changes nothing
   // It may work in its project, but not reach into the other one, nor change the whole Toto.
   kid.send({ type: 'prompt', agentId: inTheirs, text: 'let me in' });
   assert.match((await kid.next('failed')).message, /not shared with this phone/);
+  // Nor read the other one's earlier history; its own it can.
+  kid.send({ type: 'older', agentId: inTheirs, before: 5 });
+  assert.match((await kid.next('failed')).message, /not shared with this phone/);
+  kid.send({ type: 'older', agentId: inMine, before: 5 });
+  assert.equal((await kid.next('older')).agentId, inMine);
   kid.send({ type: 'create_project', name: 'more', repo: 'https://example.test/origin.git' });
   assert.match((await kid.next('failed')).message, /every project/);
   kid.send({ type: 'memory_save', layer: 'node', title: 'for everyone', body: 'x' });
