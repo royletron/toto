@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
+import { keepalive } from './keepalive.ts';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
@@ -1134,15 +1135,23 @@ function dialRelay() {
   const conns = new Map<string, ReturnType<typeof accept>>();
   const tell = (msg: object) => void (ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg)));
   // A half-dead connection looks open forever, so check it answers.
-  let answered = true;
-  const heartbeat = setInterval(() => {
-    if (!answered) return ws.close();
-    answered = false;
-    if (ws.readyState === ws.OPEN) ws.send('ping');
-  }, 30_000);
+  const beat = keepalive(ws, () => lost());
+  let over = false;
+  const lost = () => {
+    if (over) return;
+    over = true;
+    beat.stop();
+    for (const conn of conns.values()) conn.closed();
+    // Not waited on: closing a connection that has gone silent never finishes, and the next one must not depend on it.
+    try {
+      ws.close();
+    } catch {}
+    // ponytail: fixed retry. Add backoff with jitter if many devices ever reconnect at once.
+    setTimeout(dialRelay, 5_000);
+  };
   ws.onopen = () => console.log('relay: connected');
   ws.onmessage = ({ data }) => {
-    if (data === 'pong') return void (answered = true);
+    if (data === 'pong') return beat.heard();
     let msg: { c?: unknown; t?: unknown; m?: unknown };
     try {
       msg = JSON.parse(String(data));
@@ -1172,12 +1181,7 @@ function dialRelay() {
     conn.receive(msg.m);
   };
   ws.onerror = () => {}; // 'close' follows and does the work
-  ws.onclose = () => {
-    clearInterval(heartbeat);
-    for (const conn of conns.values()) conn.closed();
-    // ponytail: fixed retry. Add backoff with jitter if many devices ever reconnect at once.
-    setTimeout(dialRelay, 5_000);
-  };
+  ws.onclose = lost;
 }
 if (relayUrl) dialRelay();
 
