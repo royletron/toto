@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -91,4 +91,23 @@ test('a plugin that lists npm packages has them installed, and says where it is 
   await install('gh', tgz, sig, { ...deps, steps: { next: (text) => said.push(text) } });
   assert.deepEqual(installed, ['wrangler@4.149.0']);
   assert.deepEqual(said, ['Installing packages', 'Putting it in place']);
+});
+
+test('every plugin in the repository is one the installer accepts, with a skill named for it', () => {
+  const dir = new URL('../../plugins/', import.meta.url).pathname;
+  const names = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  assert.ok(names.includes('docker') && names.includes('gh') && names.includes('wrangler'));
+  for (const name of names) {
+    checkManifest(JSON.parse(readFileSync(`${dir}${name}/manifest.json`, 'utf8')), name);
+    const skill = readFileSync(`${dir}${name}/skills/${name}/SKILL.md`, 'utf8');
+    assert.match(skill, new RegExp(`^---\\nname: ${name}\\ndescription: .+\\n---\\n`), name);
+  }
+});
+
+test('the docker plugin installs what rootless containers need, because the installer leaves out what is only recommended', () => {
+  const docker = JSON.parse(readFileSync(new URL('../../plugins/docker/manifest.json', import.meta.url), 'utf8'));
+  // Not installed with the rest, but needed: user id mapping, rootless networking and its DNS, an init for --init, the docker command.
+  for (const needed of ['podman', 'podman-docker', 'podman-compose', 'uidmap', 'passt', 'aardvark-dns', 'catatonit']) assert.ok(docker.apt.includes(needed), needed);
+  // A daemon run as root, which anyone with its socket could use to become root, is not what this is.
+  assert.ok(!docker.apt.some((p) => /^docker(\.io|-ce|-cli)?$/.test(p)));
 });

@@ -1,0 +1,6 @@
+{
+  "name": "docker",
+  "version": "1.0.0",
+  "description": "Containers for agents: the docker command, run without root as each project's own user.",
+  "apt": ["podman", "podman-docker", "podman-compose", "uidmap", "passt", "catatonit", "aardvark-dns"]
+}
