@@ -154,7 +154,8 @@ for (const p of state.projects) {
 // its signature and installing are the root updater's job (bin/toto-update.mjs), which does not
 // take our word for anything.
 const version: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const RELEASES = 'https://github.com/royletron/toto/releases/latest/download';
+// Where releases are looked for, as the updater does (TOTO_RELEASES); tests point it at nothing.
+const RELEASES = process.env.TOTO_RELEASES ?? 'https://github.com/royletron/toto/releases/latest/download';
 let latest: string | undefined;
 let updating = false;
 // What a root job (an update, a plugin install) says it is doing. An update restarts this server in

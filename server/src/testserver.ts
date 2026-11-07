@@ -15,7 +15,9 @@ export function startServer(env: Record<string, string> = {}, seed?: (dataDir: s
   // What was in the data directory before this version, put there before the server starts.
   seed?.(dataDir);
   const server = spawn(process.execPath, [new URL('./index.ts', import.meta.url).pathname], {
-    env: { ...process.env, TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: dataDir, TOTO_RELAY_URL: '', ...env },
+    env: { ...process.env, TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: dataDir, TOTO_RELAY_URL: '',
+      // Not the internet: a release or a plugin list arriving mid-test changes the state a test is waiting on.
+      TOTO_RELEASES: 'http://127.0.0.1:9', TOTO_PLUGIN_INDEX: 'http://127.0.0.1:9/index.json', ...env },
     stdio: 'ignore',
   });
   after(() => server.kill());

@@ -12,7 +12,8 @@ import { dataDir, sh } from './projects.ts';
 const exec = promisify(execFile);
 const DIR = process.env.TOTO_PLUGIN_DIR ?? '/var/lib/toto-plugins';
 const PRIV = '/opt/toto/bin/toto-priv';
-const LISTED = 'https://toto.royletron.dev/plugins/index.json';
+// Where the relay lists plugins. Tests point it at nothing, so what they are told does not depend on the internet.
+const LISTED = process.env.TOTO_PLUGIN_INDEX ?? 'https://toto.royletron.dev/plugins/index.json';
 
 export const isPluginName = (n: unknown): n is string => typeof n === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(n);
 
