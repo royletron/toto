@@ -6,6 +6,7 @@ import { hostname, networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { keepalive } from './keepalive.ts';
+import { readStats } from './stats.ts';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
@@ -1095,6 +1096,9 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (login) keepToken(login.env, undefined);
       return refreshAgents();
     }
+    case 'stats':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
+      return send(ws, { type: 'stats', stats: await readStats(dataDir) });
     case 'job_log':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
       return send(ws, { type: 'job_log', lines: readLog() });

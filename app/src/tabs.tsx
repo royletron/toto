@@ -5,6 +5,7 @@ import { Avatar } from './avatar';
 import { useConnection } from './connection';
 import { color, tap } from './theme';
 import { Txt } from './ui';
+import { atLeast } from './version';
 
 /** How much of a name or command a tab shows. */
 const SHOWN = 10;
@@ -18,8 +19,7 @@ export function useTabs(projectId: string | undefined, { making, own }: { making
   const { agents, terminals, post, status, software } = useConnection();
   const online = status === 'open';
   // An older Toto, from before terminals, would answer with an error to put up.
-  const [major, minor] = (software?.version ?? '0.0').split('.').map(Number);
-  const hasTerminals = major > 0 || minor >= 7;
+  const hasTerminals = atLeast(software?.version, 0, 7);
   useEffect(() => {
     if (projectId && online && hasTerminals && !own) post({ type: 'term_list', projectId });
     // `post` is a new function each render; the list is wanted again only when the line comes back.

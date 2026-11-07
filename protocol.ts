@@ -150,6 +150,21 @@ export type Flag = { name: string; label: string; about: string; on: boolean };
 /** What a long job on the device (an update, a plugin install) is doing: `task` is 'update' or 'plugin:<name>'. `failed` when it ended badly. */
 export type Progress = { task: string; text: string; step?: number; of?: number; failed?: boolean };
 
+/** How a Toto is doing, for its owner to see. Sizes are in bytes, `cpu` is a percentage of all its cores, `temp` is in degrees Celsius. */
+export type Stats = {
+  cpu: number;
+  cores: number;
+  load: [number, number, number];
+  memory: { total: number; available: number };
+  swap: { total: number; free: number };
+  /** The disk the projects are kept on. */
+  disk: { total: number; free: number };
+  uptime: number;
+  temp?: number;
+  /** A Raspberry Pi says when its power supply is not giving it enough. */
+  undervoltage?: boolean;
+};
+
 export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
 
 /** Who agents' git commits are attributed to. */
@@ -206,6 +221,8 @@ export type ServerMessage =
   // The answer to `plugin_login`: open `url` and enter `code` there. The device finishes by itself,
   // and says so with a new `state`, or with `failed`.
   | { type: 'plugin_login'; name: string; url: string; code: string }
+  // The answer to `stats`.
+  | { type: 'stats'; stats: Stats }
   // The answer to `display_log`: plain text, for the person to read or pass on.
   | { type: 'display_log'; text: string }
   // The answer to `job_log`: the latest update's or plugin install's steps and output, oldest first.
@@ -305,6 +322,8 @@ export type ClientMessage =
   | { type: 'plugin_token'; name: string; token: string }
   | { type: 'plugin_logout'; name: string }
   | { type: 'check_update' }
+  // Ask how the device is doing: its processor, memory, disk and so on. Answered with `stats`, as often as asked.
+  | { type: 'stats' }
   // Ask why this device's own screen is not showing Toto's screen. Answered with `display_log`.
   | { type: 'display_log' }
   // Ask for the log of the latest update or plugin install. Answered with `job_log`, which does not

@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Tag, Task } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Stats, Tag, Task } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -93,6 +93,9 @@ type Connection = {
   plugins?: Plugin[];
   /** The code to enter, and where, for a plugin sign-in that is under way. */
   pluginLogin?: { name: string; url: string; code: string };
+  /** How the Toto is doing, as of the latest answer to `stats`, and how its processor and memory have been going. */
+  stats?: Stats;
+  statsHistory: { cpu: number[]; memory: number[] };
   /** What the Toto's own display login did at this boot, once asked for. */
   displayLog?: string;
   /** The steps and output of the latest update or plugin install, oldest first, once asked for. */
@@ -239,6 +242,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [queued, setQueued] = useState<Connection['queued']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
   const [displayLog, setDisplayLog] = useState<string>();
+  const [stats, setStats] = useState<Stats>();
+  const [statsHistory, setStatsHistory] = useState<Connection['statsHistory']>({ cpu: [], memory: [] });
   const [jobLog, setJobLog] = useState<string[]>();
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
@@ -455,6 +460,13 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       case 'job_log':
         setJobLog(msg.lines);
         break;
+      case 'stats': {
+        setStats(msg.stats);
+        const used = msg.stats.memory.total ? Math.round((100 * (msg.stats.memory.total - msg.stats.memory.available)) / msg.stats.memory.total) : 0;
+        // The last minute or two, at the rate it is asked for.
+        setStatsHistory((h) => ({ cpu: [...h.cpu, msg.stats.cpu].slice(-40), memory: [...h.memory, used].slice(-40) }));
+        break;
+      }
       case 'display_log':
         setPending(undefined);
         setDisplayLog(msg.text);
@@ -551,6 +563,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setProjects([]);
     setAgents([]);
     keepEvents({}, {});
+    setStats(undefined);
+    setStatsHistory({ cpu: [], memory: [] });
     expected.current = {};
     asked.current = {};
     setScreens({});
@@ -729,7 +743,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, listenTerm, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, stats, statsHistory, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, listenTerm, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

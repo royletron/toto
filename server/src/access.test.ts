@@ -66,6 +66,9 @@ test('a phone shared in sees only its projects, and a paused one changes nothing
   assert.match((await kid.next('failed')).message, /not shared with this phone/);
   kid.send({ type: 'older', agentId: inMine, before: 5 });
   assert.equal((await kid.next('older')).agentId, inMine);
+  // How the machine is doing is the owner's to see.
+  kid.send({ type: 'stats' });
+  assert.match((await kid.next('failed')).message, /every project/);
   kid.send({ type: 'create_project', name: 'more', repo: 'https://example.test/origin.git' });
   assert.match((await kid.next('failed')).message, /every project/);
   kid.send({ type: 'memory_save', layer: 'node', title: 'for everyone', body: 'x' });

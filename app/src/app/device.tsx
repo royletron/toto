@@ -7,7 +7,9 @@ import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
 import { gutter } from '../theme';
+import { Health } from '../health';
 import { Transcript } from '../updating';
+import { atLeast } from '../version';
 import { Btn, Check, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 function Author({ identity }: { identity: Identity }) {
@@ -283,6 +285,15 @@ export default function Device() {
             </Section>
           )}
           <Rule />
+          {/* How it is doing, for its owner, on a Toto that can say. */}
+          {owner && atLeast(software?.version, 0, 8, 1) && (
+            <>
+              <Section title="Health" about="How this Toto is doing now: its processor, memory and disk, and its temperature and power on a Raspberry Pi.">
+                <Health />
+              </Section>
+              <Rule />
+            </>
+          )}
           {owner && software && !software.container && (
             <>
               <Section title="Display" about="If the screen plugged into this Toto shows a login or nothing instead of its own screen, this says what happened.">

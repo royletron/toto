@@ -1,13 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { useConnection } from './connection';
+import { atLeast } from './version';
 import XTerm, { type XTermHandle } from './xterm.dom';
 
 /** Whether a Toto of this version can send a terminal as bytes. An older one sends screens, which `Terminal` draws. */
-export const hasRawTerminals = (version?: string) => {
-  const [major, minor] = (version ?? '0.0').split('.').map(Number);
-  return major > 0 || minor >= 8;
-};
+export const hasRawTerminals = (version?: string) => atLeast(version, 0, 8);
 
 /**
  * One of a project's terminals, drawn by a real emulator (see xterm.dom.tsx) from what the Toto's
