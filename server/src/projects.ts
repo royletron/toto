@@ -17,9 +17,20 @@ const PRIV = '/opt/toto/bin/toto-priv';
 // command run as that user reads the file on its way in.
 // Plugins that need a sign-in add theirs (see plugins.ts).
 export const secretNames = new Set(['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
-const INSTALL_ENV = `umask 077 && cat > "$HOME/.toto-env"`;
 const WITH_ENV = `[ -r "$HOME/.toto-env" ] && . "$HOME/.toto-env"; exec "$@"`;
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
+
+// Debian's `vi` is vim.tiny, which its own config puts in Vi-compatible mode: arrow keys do not work while
+// typing (Escape and the letters after it are taken as commands) and Backspace stops where typing began.
+// A project user with no vim config of their own gets one that says otherwise; one that has any is left alone.
+const VIMRC = [
+  '" Made by Toto, only because there was no .vimrc. The vi on Debian starts in Vi-compatible mode, where arrow keys',
+  '" do not work while typing. Change this as you like: it is not made again while a .vimrc is here.',
+  'set nocompatible',
+  'set backspace=indent,eol,start',
+  '',
+].join('\n');
+export const INSTALL_ENV = `umask 077 && cat > "$HOME/.toto-env"; [ -e "$HOME/.vimrc" ] || [ -e "$HOME/.vim" ] || printf %s ${quote(VIMRC)} > "$HOME/.vimrc"; true`;
 
 /** The credentials in `env`, and anything else a project's agents are to have (`extra`), as a file a POSIX shell can source. */
 export const envFile = (env: Record<string, string | undefined>, extra: Record<string, string> = {}) =>

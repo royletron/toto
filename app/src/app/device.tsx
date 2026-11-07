@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Alert, Keyboard, Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import xterm from '@xterm/xterm/package.json';
 import { progressText, useConnection, type Identity, type Node, type Phone } from '../connection';
 import { DEMO } from '../demo';
 import { Face } from '../face';
@@ -8,6 +10,7 @@ import { inviteLink } from '../invite';
 import { QR } from '../qr';
 import { gutter } from '../theme';
 import { Health } from '../health';
+import { hasRawTerminals } from '../rawterminal';
 import { Transcript } from '../updating';
 import { atLeast } from '../version';
 import { Btn, Check, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
@@ -278,6 +281,11 @@ export default function Device() {
                 <Btn label={pending?.type === 'check_update' ? 'Checking…' : 'Check for updates'} onPress={() => request({ type: 'check_update' })} busy={pending?.type === 'check_update'} disabled={software.updating || busy || status !== 'open'} />
               )}
               {!software.container && owner && <UpdateLog updating={software.updating} />}
+              {/* Which of the two terminals is in use, since the difference is only seen in how programs behave. */}
+              <Txt tone="ghost" small style={{ marginTop: 12 }}>
+                {`App ${Constants.expoConfig?.version ?? 'unknown'}. `}
+                {hasRawTerminals(software.version) ? `Terminals are drawn by xterm.js ${xterm.version}.` : 'Terminals are drawn from screens. This Toto needs 0.8.0 or newer for xterm.js.'}
+              </Txt>
             </Section>
           ) : (
             <Section title="Software" about="This Toto is too old to update itself. Flash it with a newer image, or run the installer again.">
