@@ -1,0 +1,8 @@
+{
+  "name": "spacevim",
+  "version": "1.0.0",
+  "description": "SpaceVim in Neovim, for when you work in a terminal tab yourself. About 150 MB for each project.",
+  "apt": ["neovim", "git", "ripgrep"],
+  "needs": "0.9.0",
+  "setup": "setup.sh"
+}

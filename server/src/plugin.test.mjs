@@ -96,7 +96,7 @@ test('a plugin that lists npm packages has them installed, and says where it is 
 test('every plugin in the repository is one the installer accepts, with a skill named for it', () => {
   const dir = new URL('../../plugins/', import.meta.url).pathname;
   const names = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  assert.ok(names.includes('docker') && names.includes('gh') && names.includes('wrangler'));
+  assert.ok(['docker', 'gh', 'spacevim', 'wrangler'].every((n) => names.includes(n)));
   for (const name of names) {
     checkManifest(JSON.parse(readFileSync(`${dir}${name}/manifest.json`, 'utf8')), name);
     const skill = readFileSync(`${dir}${name}/skills/${name}/SKILL.md`, 'utf8');
@@ -110,4 +110,21 @@ test('the docker plugin installs what rootless containers need, because the inst
   for (const needed of ['podman', 'podman-docker', 'podman-compose', 'uidmap', 'passt', 'aardvark-dns', 'catatonit']) assert.ok(docker.apt.includes(needed), needed);
   // A daemon run as root, which anyone with its socket could use to become root, is not what this is.
   assert.ok(!docker.apt.some((p) => /^docker(\.io|-ce|-cli)?$/.test(p)));
+});
+
+test('a plugin may name a script to set up each project user, which must be in the bundle and be a plain file name', () => {
+  const ok = { name: 'x', version: '1.0.0' };
+  checkManifest({ ...ok, setup: 'setup.sh' }, 'x');
+  for (const setup of ['../setup.sh', '/etc/passwd', 'a/b.sh', 'setup', 'setup.sh; reboot', '', 5, ['setup.sh'], '.sh', 'a b.sh']) assert.throws(() => checkManifest({ ...ok, setup }, 'x'), /setup script/, String(setup));
+});
+
+test('a setup script that is not in the bundle stops the install, and one that is installs', async () => {
+  const withScript = bundle({ 'manifest.json': manifest({ apt: undefined, setup: 'setup.sh' }), 'setup.sh': 'echo hi\n' });
+  const missing = bundle({ 'manifest.json': manifest({ apt: undefined, setup: 'setup.sh' }) });
+  const a = target();
+  await assert.rejects(install('gh', missing.tgz, missing.sig, a.deps), /setup script that is not in it/);
+  assert.ok(!existsSync(join(a.dir, 'gh')), 'nothing was put in place');
+  const b = target();
+  await install('gh', withScript.tgz, withScript.sig, b.deps);
+  assert.equal(readFileSync(join(b.dir, 'gh', 'setup.sh'), 'utf8'), 'echo hi\n');
 });

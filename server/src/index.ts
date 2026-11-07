@@ -13,7 +13,7 @@ import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.t
 import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, snapshotTerminal, streamTerminal, typing, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
-import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
+import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, setUpPlugins, startPluginLogin, useTokens } from './plugins.ts';
 import { apiToken, sameToken, startAgentApi } from './agentapi.ts';
 import { describeFlags, setFlag } from './flags.ts';
 import { openDb, transaction } from './db.ts';
@@ -143,6 +143,8 @@ const shell = (project: ProjectRecord) => ({ user: project.user, cwd: project.di
 const sshKey = await deviceKey();
 // Credentials change by editing the server's environment and restarting, so this is where projects catch up.
 await Promise.all(state.projects.map((p) => installEnv(p.user, projectEnv(p)).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
+// What plugins keep in a project user's home, for any that is not there yet (a project made, or a plugin added, while this was off).
+for (const p of state.projects) void setUpPlugins(p.user);
 // Firewall rules do not survive a reboot, so every start puts each project back where it should be.
 // ponytail: if something else wipes the rules while we run, they stay gone until the next start.
 for (const p of state.projects) {
@@ -199,7 +201,7 @@ async function checkForUpdate() {
   broadcast(snapshot());
 }
 const checkForPlugins = async () => {
-  const found = await listed();
+  const found = await listed(version);
   const changed = JSON.stringify(found) !== JSON.stringify(offered);
   offered = found;
   // The first look finishes after the first app has connected, which would otherwise keep seeing none.
@@ -763,6 +765,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       const { user, dir } = await createProject(id, msg.repo.trim(), state.identity, projectEnv({ id }));
       // A new project user starts off the local network; toto-priv saw to that when it made the user.
       state.projects.push({ id, name: msg.name.trim(), repo: msg.repo.trim(), user, dir, lan: user ? false : undefined });
+      void setUpPlugins(user);
       return commit();
     }
     case 'set_identity': {
@@ -999,6 +1002,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       follow();
       await installPlugin(msg.name);
       progress = undefined;
+      for (const p of state.projects) void setUpPlugins(p.user);
       return refreshAgents();
     case 'plugin_remove': {
       const { name, login } = installedPlugin(ws, msg.name);

@@ -51,3 +51,17 @@ test('a plugin that is signed in to by pasting says where, and is told apart fro
   const have = [{ name: 'wrangler', version: '1.0.0', description: 'W', login: paste }];
   assert.deepEqual(describe(have, [], {}), [{ name: 'wrangler', description: 'W', version: '1.0.0', login: true, paste: { url: 'https://example.test/tokens', help: 'Make one.' } }]);
 });
+
+test('a plugin that needs a newer server than this one is not offered, and nothing malformed is', async () => {
+  const { offerable } = await import('./plugins.ts');
+  const found = [
+    { name: 'gh', version: '1.0.0', description: 'a' },
+    { name: 'spacevim', version: '1.0.0', description: 'b', needs: '0.9.0' },
+    { name: 'odd', version: '1.0.0', description: 'c', needs: 'soon' },
+    { name: 'Bad Name', version: '1.0.0', description: 'd' },
+  ];
+  assert.deepEqual(offerable(found, '0.8.4').map((m) => m.name), ['gh']);
+  assert.deepEqual(offerable(found, '0.9.0').map((m) => m.name), ['gh', 'spacevim']);
+  assert.deepEqual(offerable(found, '0.10.0').map((m) => m.name), ['gh', 'spacevim'], 'ten is more than nine');
+  assert.deepEqual(offerable('not a list', '1.0.0'), []);
+});

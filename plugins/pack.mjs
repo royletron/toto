@@ -20,7 +20,7 @@ for (const name of readdirSync(here, { withFileTypes: true }).filter((e) => e.is
   if (!signedBy(publicKey, bundle, signature)) throw new Error('PLUGIN_KEY does not match plugin.pub');
   writeFileSync(`${out}/${name}.tar.gz`, bundle);
   writeFileSync(`${out}/${name}.tar.gz.sig`, signature);
-  const { version, description, login } = JSON.parse(readFileSync(`${here}${name}/manifest.json`, 'utf8'));
-  index.push({ name, version, description, ...(login ? { login: true } : null) });
+  const { version, description, login, needs } = JSON.parse(readFileSync(`${here}${name}/manifest.json`, 'utf8'));
+  index.push({ name, version, description, ...(login ? { login: true } : null), ...(needs ? { needs } : null) });
 }
 writeFileSync(`${out}/index.json`, JSON.stringify(index));

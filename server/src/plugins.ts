@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Plugin } from '../../protocol.ts';
-import { dataDir, sh } from './projects.ts';
+import { dataDir, run, sh } from './projects.ts';
 
 const exec = promisify(execFile);
 const DIR = process.env.TOTO_PLUGIN_DIR ?? '/var/lib/toto-plugins';
@@ -20,7 +20,8 @@ export const isPluginName = (n: unknown): n is string => typeof n === 'string' &
 type Paste = { url: string; help: string; pattern: string; check?: string[] };
 type DeviceLogin = { run: string[]; url: string; code: string; token: string[] };
 type Login = { env: string; paste?: Paste } & Partial<DeviceLogin>;
-type Manifest = { name: string; version: string; description?: string; login?: Login };
+/** `needs` is the oldest server that can use the plugin, for one that depends on something added to the server since. */
+type Manifest = { name: string; version: string; description?: string; login?: Login; setup?: string; needs?: string };
 
 /** The plugins installed here. The directory is root's, so what is in it was checked when it was put there. */
 export function installed(dir = DIR): Manifest[] {
@@ -40,11 +41,16 @@ export function installed(dir = DIR): Manifest[] {
   }
 }
 
+/** Of what the relay lists, what is well formed and that a server of this `version` can use. */
+export const offerable = (found: unknown, version: string): Manifest[] =>
+  Array.isArray(found)
+    ? found.filter((m) => isPluginName(m?.name) && /^\d+\.\d+\.\d+$/.test(m.version) && typeof m.description === 'string' && (m.needs === undefined || (/^\d+\.\d+\.\d+$/.test(m.needs) && !newer(m.needs, version))))
+    : [];
+
 /** The plugins the relay says exist. A hint for what to offer: the device checks whatever it installs. */
-export async function listed(): Promise<Manifest[]> {
+export async function listed(version: string): Promise<Manifest[]> {
   const res = await fetch(LISTED, { signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
-  const found = await res?.json().catch(() => undefined);
-  return Array.isArray(found) ? found.filter((m) => isPluginName(m?.name) && /^\d+\.\d+\.\d+$/.test(m.version) && typeof m.description === 'string') : [];
+  return offerable(await res?.json().catch(() => undefined), version);
 }
 
 const newer = (a: string, b: string) => {
@@ -161,5 +167,28 @@ export async function startPluginLogin(login: DeviceLogin, name: string, done: (
     await cancelPluginLogin(name);
     rmSync(home, { recursive: true, force: true });
     throw err instanceof Error ? err : new Error('Could not start the sign-in.');
+  }
+}
+
+
+// --- Setup in a project user's home. A plugin may name a script in its bundle (see bin/toto-plugin.mjs)
+// for what lives in a home folder, such as an editor's configuration. It runs as the project's own
+// unprivileged user, so it can do no more than that user can, and is signed with the rest of the bundle.
+// A marker made only when it succeeds, for that version of the plugin, keeps it to once each.
+export const SETUP = `marker="$HOME/.toto-setup/$1-$2"; [ -e "$marker" ] && exit 0; script=$3; cd "$HOME" && sh "$script" && mkdir -p "$HOME/.toto-setup" && : > "$marker"`;
+const running = new Set<string>();
+
+/**
+ * Runs the setup of every installed plugin that has one, as this project user, where it has not been
+ * done for this version. Never throws: one that fails is told of and tried again next time.
+ */
+export async function setUpPlugins(user: string | undefined, dir = DIR) {
+  if (!user) return; // in development the project user is you, and your home is left alone
+  for (const m of installed(dir)) {
+    if (!m.setup || running.has(`${user}:${m.name}`)) continue;
+    running.add(`${user}:${m.name}`);
+    await run(user, `/home/${user}`, 'sh', ['-c', SETUP, 'sh', m.name, m.version, `${dir}/${m.name}/${m.setup}`])
+      .catch((err) => console.error(`setting up ${m.name} for a project: ${err.message}`))
+      .finally(() => running.delete(`${user}:${m.name}`));
   }
 }

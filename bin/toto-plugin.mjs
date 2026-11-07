@@ -7,6 +7,8 @@
 // key: plugins ship on their own) whose public half is /opt/toto/plugin.pub. The relay hosts the
 // bundles, but is not believed: a bundle it altered, or made up, fails the signature and is dropped.
 // The manifest lists the packages to install from apt and npm; nothing in a bundle is ever run as root.
+// It may also name a `setup` script in the bundle, which the server runs, once, as each project's own
+// unprivileged user (never as root), for what belongs in a user's home folder.
 //
 //   toto-plugin.mjs install <name>
 //   toto-plugin.mjs remove <name>
@@ -25,6 +27,8 @@ const isPackage = (p) => typeof p === 'string' && /^[a-z0-9][a-z0-9.+-]{0,60}$/.
 
 // An npm package at one exact version, so what is installed is what the signed manifest named.
 const isNpm = (p) => typeof p === 'string' && /^(@[a-z0-9-]+\/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+$/.test(p);
+// A script in the bundle, by its name: no folders, so no way out of the bundle.
+const isScript = (n) => typeof n === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,40}\.sh$/.test(n);
 const isArgv = (a) => Array.isArray(a) && a.length >= 1 && a.length <= 20 && a.every((s) => typeof s === 'string' && s.length <= 200);
 const isPattern = (s) => {
   try {
@@ -53,6 +57,8 @@ export function checkManifest(m, name) {
   if (!/^\d+\.\d+\.\d+$/.test(m.version)) throw new Error('The plugin has no valid version. Nothing was installed.');
   if (m.apt !== undefined && !(Array.isArray(m.apt) && m.apt.length <= 10 && m.apt.every(isPackage))) throw new Error('The plugin asks for packages that are not valid. Nothing was installed.');
   if (m.npm !== undefined && !(Array.isArray(m.npm) && m.npm.length <= 5 && m.npm.every(isNpm))) throw new Error('The plugin asks for packages that are not valid. Nothing was installed.');
+  if (m.needs !== undefined && !/^\d+\.\d+\.\d+$/.test(m.needs)) throw new Error('The plugin says it needs a version that is not valid. Nothing was installed.');
+  if (m.setup !== undefined && !isScript(m.setup)) throw new Error('The plugin has a setup script that is not valid. Nothing was installed.');
   if (m.login !== undefined && !isLogin(m.login)) throw new Error('The plugin has a sign-in that is not valid. Nothing was installed.');
 }
 
@@ -73,6 +79,7 @@ export async function install(name, bundle, signature, { publicKey, dir = DIR, a
     execFileSync('tar', ['xzf', `${work}/bundle.tar.gz`, '-C', staged, '--no-same-owner']);
     const manifest = JSON.parse(readFileSync(`${staged}/manifest.json`, 'utf8'));
     checkManifest(manifest, name);
+    if (manifest.setup && !existsSync(`${staged}/${manifest.setup}`)) throw new Error('The plugin names a setup script that is not in it. Nothing was installed.');
     const have = existsSync(`${dir}/${name}/manifest.json`) ? JSON.parse(readFileSync(`${dir}/${name}/manifest.json`, 'utf8')).version : undefined;
     // Newer only: an old bundle is validly signed too, and must not bring back a fixed flaw.
     if (have && !newer(manifest.version, have)) throw new Error(`${name} ${have} is already installed.`);

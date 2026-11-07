@@ -132,13 +132,15 @@ sudo ./install.sh</pre>
 
   <section aria-labelledby="plugins">
     <h2 id="plugins">Plugins</h2>
-    <p>Plugins give agents more tools. Install them from settings, under <b>Plugins</b>. There are two so far:</p>
+    <p>Plugins give agents more tools. Install them from settings, under <b>Plugins</b>. There are four so far:</p>
     <ul>
       <li><b>gh</b>, GitHub's command line, for pull requests, issues and checks. Signing in shows a code to enter on GitHub's page.</li>
       <li><b>wrangler</b>, Cloudflare's command line, for Workers, D1, R2 and KV. Signing in takes an API token you make on Cloudflare's dashboard and paste into the app.</li>
+      <li><b>docker</b>, containers for agents, with the <code>docker</code> command, <code>docker build</code> and <code>docker compose</code>. It is Podman underneath, run without root as each project's own user, because the usual Docker would give every agent root on the Toto. Some less common Docker features are missing, and nothing restarts after a reboot.</li>
+      <li><b>spacevim</b>, Neovim with <a href="https://spacevim.org">SpaceVim</a>, for when you work in a terminal tab yourself. It puts a copy in each project's home folder, about 150 MB each, the first time the plugin is installed or a project is made, and fetches its own plugins the first time you open <code>nvim</code>. Needs Toto 0.9.0.</li>
     </ul>
     <p>A plugin is signed in once per Toto, and every project's agents use that sign-in. The token stays on the Toto, in a private file.</p>
-    <p>Every plugin is signed, and a Toto checks it against a key of its own before installing anything. The site hosts them but is not believed: a plugin that was changed on the way fails the check and is dropped. Nothing in a plugin is run as root; it names packages, at exact versions, for the Toto to install.</p>
+    <p>Every plugin is signed, and a Toto checks it against a key of its own before installing anything. The site hosts them but is not believed: a plugin that was changed on the way fails the check and is dropped. Nothing in a plugin is run as root; it names packages for the Toto to install. A plugin can also name a script to run once for each project, but that runs as the project's own user, which can do no more than the project's agents can.</p>
     <p>The browser, sending files, and memory and tasks come with Toto and need no installing.</p>
   </section>
 
