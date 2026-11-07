@@ -254,18 +254,33 @@ export function typeCommands(name: string, text: string, per = 400): string[] {
 }
 
 /** The modes a program in the session has set, and where its cursor is, as tmux reports them. */
-const FLAGS = ['alternate_on', 'keypad_cursor_flag', 'keypad_flag', 'cursor_flag', 'wrap_flag', 'insert_flag', 'mouse_standard_flag', 'mouse_button_flag', 'mouse_any_flag', 'mouse_sgr_flag', 'mouse_utf8_flag', 'cursor_x', 'cursor_y'];
+const FLAGS = ['alternate_on', 'keypad_cursor_flag', 'keypad_flag', 'cursor_flag', 'wrap_flag', 'insert_flag', 'mouse_standard_flag', 'mouse_button_flag', 'mouse_any_flag', 'mouse_sgr_flag', 'mouse_utf8_flag', 'cursor_x', 'cursor_y', 'pane_height'];
 const SNAPSHOT = `tmux display-message -p -t "$1" '${FLAGS.map((f) => `#{${f}}`).join(' ')}' && printf '\\0' && tmux capture-pane -e -p -S -${SCROLLBACK} -t "$1"`;
 
 /**
  * What to feed an emulator that has only just been attached, to make it look like the session does now:
  * the screen the program has switched to, its modes, the text with its colours, and the cursor. Takes
- * the output of the script above (flags, a NUL, the screen with scrollback).
+ * the output of the script above (flags, a NUL, the screen with its scrollback above it).
+ *
+ * It does not know how tall the emulator is, which may not be as tall as the session, so it never says
+ * where on the screen anything goes. It prints the text down to the cursor (or to the last line with
+ * anything on it, if that is further), where the unused rest of the pane would only scroll the text
+ * off the top of a shorter emulator, and puts the cursor back by moving it up and along.
  */
 export function snapshotBytes(raw: string): Buffer {
   const [head = '', ...body] = raw.split('\0');
-  const [alt, appCursor, appKeypad, cursor, wrap, insert, mouse, drag, any, sgr, utf8, x = 0, y = 0] = head.trim().split(' ').map(Number);
-  const lines = body.join('\0').replace(/\n$/, '').split('\n');
+  const [alt, appCursor, appKeypad, cursor, wrap, insert, mouse, drag, any, sgr, utf8, x = 0, y = 0, height = 0] = head.trim().split(' ').map(Number);
+  const all = body.join('\0').replace(/\n$/, '').split('\n');
+  // The last `height` lines are the screen; whatever is above them is scrollback.
+  const top = Math.max(0, all.length - (height || all.length));
+  const screen = all.slice(top);
+  const blank = (line: string) => !line.replace(/\x1b\[[0-9;:]*m/g, '').trim();
+  let last = Math.min(Math.max(y, 0), screen.length - 1);
+  for (let i = screen.length - 1; i > last; i--)
+    if (!blank(screen[i])) {
+      last = i;
+      break;
+    }
   const on = (flag: number | undefined, set: string, unset = '') => (flag ? set : unset);
   return Buffer.from(
     on(alt, '\x1b[?1049h') +
@@ -278,9 +293,9 @@ export function snapshotBytes(raw: string): Buffer {
       on(any, '\x1b[?1003h') +
       on(utf8, '\x1b[?1005h') +
       on(sgr, '\x1b[?1006h') +
-      '\x1b[H\x1b[2J' +
-      lines.map((l) => `${l}\x1b[0m`).join('\r\n') +
-      `\x1b[${y + 1};${x + 1}H` +
+      [...all.slice(0, top), ...screen.slice(0, last + 1)].map((l) => `${l}\x1b[0m`).join('\r\n') +
+      (last > y ? `\x1b[${last - y}A` : '') +
+      `\x1b[${x + 1}G` +
       on(!cursor ? 1 : 0, '\x1b[?25l'),
   );
 }
@@ -316,6 +331,9 @@ export function streamTerminal({ user, cwd, projectId }: Where, id: string, onDa
     type: (text: string) => typeCommands(name, text).forEach(tell),
     resize: (cols: number, rows: number) => tell(`resize-window -t ${name} -x ${cols} -y ${rows}`),
     stop: () => {
+      // An empty line is how a control client is told to leave. Closing its input does not end it, so without
+      // this every terminal ever opened would leave a client attached for good.
+      tell('');
       child.stdin.end();
       child.stdout.destroy();
     },

@@ -29,8 +29,9 @@
 
   <section aria-labelledby="d20261107">
     <h2 id="d20261107">7 November 2026</h2>
-    <p class="note">Toto 0.8.0 to 0.9.0, app 1.7.0 to 1.7.2</p>
+    <p class="note">Toto 0.8.0 to 0.9.1, app 1.7.0 to 1.7.2</p>
     <ul>
+      <li><b>Fixed the terminal opening blank</b> on the web, with only a blinking cursor. If the terminal in your browser was shorter than the session on the Toto, which happens when the page's layout settles after it opens, the screen's first lines, the prompt included, were pushed off the top. It now paints only down to the cursor, so it shows at any height, with the scrollback kept. Closing a terminal also now ends its connection on the Toto instead of leaving one behind each time. Needs Toto 0.9.1.</li>
       <li><b>Two new plugins.</b> <b>docker</b> gives agents the <code>docker</code> command. It runs Podman without root as each project's own user, since the usual Docker would give every agent root on the Toto. <b>spacevim</b> sets up Neovim with SpaceVim for you to use in a terminal tab, about 150 MB for each project. A plugin can now set something up in each project's home folder, once, as that project's own user, and can say which Toto version it needs: a Toto too old for one does not offer it. Needs Toto 0.9.0.</li>
       <li><b>A real terminal.</b> Terminals are now drawn by xterm.js from what the session prints as it prints it, so vi and other full-screen programs get the whole screen, the right keys and the mouse. It is the same on the web and on a phone, which has a row of extra keys. Needs Toto 0.8.0 and app 1.7.0; an older Toto keeps the old terminal.</li>
       <li><b>Health.</b> Device settings shows how the Toto is doing as it happens: processor, memory, swap, the disk your projects are on, its temperature, and whether a Raspberry Pi is being given too little power. Needs Toto 0.8.1 and app 1.7.1.</li>

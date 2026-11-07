@@ -25,14 +25,24 @@ test('typing is sent as raw bytes, hexadecimal, in lines of a size tmux will tak
   assert.deepEqual(typeCommands('n', ''), []);
 });
 
-test('a snapshot paints the screen, in the modes the program set, with the cursor where it is', () => {
-  const flags = (o: Partial<Record<string, number>>) => ['alt', 'appCursor', 'appKeypad', 'cursor', 'wrap', 'insert', 'mouse', 'drag', 'any', 'sgr', 'utf8', 'x', 'y'].map((k) => o[k] ?? (k === 'cursor' || k === 'wrap' ? 1 : 0)).join(' ');
-  const plain = snapshotBytes(`${flags({ x: 3, y: 1 })}\0top\n\x1b[31mred\x1b[0m\n`).toString();
-  assert.equal(plain, '\x1b[H\x1b[2Jtop\x1b[0m\r\n\x1b[31mred\x1b[0m\x1b[0m\x1b[2;4H');
-  const vi = snapshotBytes(`${flags({ alt: 1, appCursor: 1, cursor: 0, mouse: 1, sgr: 1, x: 0, y: 0 })}\0~\n`).toString();
+test('a snapshot paints the text down to the cursor, with no claim about where on the screen, and puts the cursor back', () => {
+  const flags = (o: Partial<Record<string, number>>) => ['alt', 'appCursor', 'appKeypad', 'cursor', 'wrap', 'insert', 'mouse', 'drag', 'any', 'sgr', 'utf8', 'x', 'y', 'height'].map((k) => o[k] ?? (k === 'cursor' || k === 'wrap' ? 1 : 0)).join(' ');
+  const plain = snapshotBytes(`${flags({ x: 3, y: 1, height: 2 })}\0top\n\x1b[31mred\x1b[0m\n`).toString();
+  assert.equal(plain, 'top\x1b[0m\r\n\x1b[31mred\x1b[0m\x1b[0m\x1b[4G');
+  // A session taller than whoever is looking: its blank lines below the cursor are left out, or they would
+  // push the prompt off the top of a shorter screen. Scrollback goes in front.
+  const tall = snapshotBytes(`${flags({ x: 33, y: 0, height: 4 })}\0old1\nold2\nprompt $\n\n\n\n`).toString();
+  assert.equal(tall, 'old1\x1b[0m\r\nold2\x1b[0m\r\nprompt $\x1b[0m\x1b[34G');
+  assert.ok(!/\x1b\[\d+;\d+H|\x1b\[2J/.test(tall), 'nothing is placed by row, or cleared');
+  // Text below the cursor, as in an editor, is kept, and the cursor goes back up to where it was.
+  const below = snapshotBytes(`${flags({ x: 0, y: 0, height: 3 })}\0a\n\nc\n`).toString();
+  assert.equal(below, 'a\x1b[0m\r\n\x1b[0m\r\nc\x1b[0m\x1b[2A\x1b[1G');
+  // A line holding only colour codes is blank.
+  assert.equal(snapshotBytes(`${flags({ height: 2 })}\0x\n\x1b[0m\x1b[m \n`).toString(), 'x\x1b[0m\x1b[1G');
+  const vi = snapshotBytes(`${flags({ alt: 1, appCursor: 1, cursor: 0, mouse: 1, sgr: 1, x: 0, y: 0, height: 1 })}\0~\n`).toString();
   assert.ok(vi.startsWith('\x1b[?1049h\x1b[?1h'), 'it switches to the alternate screen first, and sets application cursor keys');
   assert.ok(vi.includes('\x1b[?1000h') && vi.includes('\x1b[?1006h'), 'mouse reporting as the program asked for it');
-  assert.ok(vi.endsWith('\x1b[1;1H\x1b[?25l'), 'and the cursor hidden if it was');
+  assert.ok(vi.endsWith('\x1b[1G\x1b[?25l'), 'and the cursor hidden if it was');
 });
 
 test('typing at a real terminal is followed too: arrows and history are not text', () => {
@@ -69,7 +79,8 @@ test('a live session streams what it prints, takes raw keystrokes, and a late vi
   await openTerminal(where, id, 80, 24);
   try {
     let seen = '';
-    const stream = streamTerminal(where, id, (b) => (seen += b.toString()), () => {});
+    const ended1: ((v?: unknown) => void)[] = [];
+    const stream = streamTerminal(where, id, (b) => (seen += b.toString()), () => ended1.forEach((f) => f()));
     const until = async (what: string, ok: () => boolean) => {
       for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 50));
       assert.ok(ok(), `${what}; saw ${JSON.stringify(seen.slice(-200))}`);
@@ -84,8 +95,11 @@ test('a live session streams what it prints, takes raw keystrokes, and a late vi
     // Someone arriving now is shown what is on the screen, colours and all, and where the cursor is.
     const snap = (await snapshotTerminal(where, id)).toString();
     assert.ok(snap.includes('one\x1b[1mtwo') || snap.includes('two'), 'the earlier output is in it');
-    assert.match(snap, /\x1b\[\d+;\d+H$/);
+    assert.match(snap, /\x1b\[\d+G$/);
+    // Letting go ends the client for good: they do not pile up.
+    const ended = new Promise((done) => ended1.push(done));
     stream.stop();
+    await Promise.race([ended, new Promise((_, no) => setTimeout(() => no(new Error('the control client did not leave')), 5000))]);
   } finally {
     await killTerminal(where, id);
   }
