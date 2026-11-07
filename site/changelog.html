@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toto changelog</title>
+<meta name="description" content="What changed in each release of Toto, the server on your Raspberry Pi, and of its app.">
+<meta name="theme-color" content="#11140f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="stylesheet" href="/toto.css">
+</head>
+<body class="docs">
+
+<header class="top">
+  <a class="name" href="/">toto<span>_</span></a>
+  <nav aria-label="Site">
+    <a href="/">home</a>
+    <a href="/docs">docs</a>
+    <a href="/changelog" aria-current="page">changelog</a>
+  </nav>
+</header>
+
+<main class="doc">
+  <section>
+    <h1>Changelog</h1>
+    <p class="note">What changed, newest first. <b>Toto</b> is the server on your Raspberry Pi, updated from the app; the <b>app</b> has versions of its own. A feature that needs both says which. Every release is on <a href="https://github.com/royletron/toto/releases">GitHub</a>, with the files.</p>
+  </section>
+
+  <section aria-labelledby="d20261107">
+    <h2 id="d20261107">7 November 2026</h2>
+    <p class="note">Toto 0.8.0 to 0.8.4, app 1.7.0 to 1.7.2</p>
+    <ul>
+      <li><b>A real terminal.</b> Terminals are now drawn by xterm.js from what the session prints as it prints it, so vi and other full-screen programs get the whole screen, the right keys and the mouse. It is the same on the web and on a phone, which has a row of extra keys. Needs Toto 0.8.0 and app 1.7.0; an older Toto keeps the old terminal.</li>
+      <li><b>Health.</b> Device settings shows how the Toto is doing as it happens: processor, memory, swap, the disk your projects are on, its temperature, and whether a Raspberry Pi is being given too little power. Needs Toto 0.8.1 and app 1.7.1.</li>
+      <li><b>vi works while you type.</b> Debian's vi starts in a mode where arrow keys type letters in insert mode. A project with no <code>.vimrc</code> now gets one that turns that off, and yours is never replaced.</li>
+      <li>Device settings says which app version you have and which terminal it is using.</li>
+      <li>0.8.2 and 0.8.3 were never published: their tests failed, once on a check that assumed Debian and once on a timing slip in the tests themselves. 0.8.4 is the same release with both put right.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261106">
+    <h2 id="d20261106">6 November 2026</h2>
+    <p class="note">Toto 0.7.9</p>
+    <ul>
+      <li><b>Fixed a Toto staying off the relay.</b> If the connection to the relay stopped answering, the Toto gave up on it but never tried again until it was restarted. It now reconnects within a minute.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261028">
+    <h2 id="d20261028">28 October 2026</h2>
+    <p class="note">Toto 0.7.7 to 0.7.8, app 1.6.2 to 1.6.4</p>
+    <ul>
+      <li><b>Reconnecting is quick.</b> The app tells the Toto how much of each conversation it already has, and only the rest is sent. A phone with nothing gets the last hundred events of each conversation, and fetches earlier ones as you scroll up. Needs Toto 0.7.7 and app 1.6.2.</li>
+      <li><b>An update screen.</b> While a Toto updates, every app that is connected shows one screen with the step it is on and what the updater prints, in colour, following along. It stays up through the restart and says how it went. Needs app 1.6.3.</li>
+      <li><b>Tabs.</b> A project's agents and terminals are tabs in the header, an agent by its face and name and a terminal by the last command typed into it. Names are cut at ten characters.</li>
+      <li>On the web, Return no longer takes the keyboard away from the terminal.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261024">
+    <h2 id="d20261024">24 October 2026</h2>
+    <p class="note">Toto 0.7.6, app 1.6.0 to 1.6.1</p>
+    <ul>
+      <li><b>Share only some projects.</b> A phone you share a Toto with can be limited to the projects you choose, and paused, which leaves it able to read but not to change anything.</li>
+      <li>The Android app is also attached to its release on GitHub, and the first-run screen scrolls on a small phone.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261022">
+    <h2 id="d20261022">22 October 2026</h2>
+    <p class="note">Toto 0.7.5, app 1.5.0</p>
+    <ul>
+      <li><b>A stop button</b> for an agent that is mid-turn, and no message box while Claude is asking you a question.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261020">
+    <h2 id="d20261020">20 to 21 October 2026</h2>
+    <p class="note">Toto 0.7.2 to 0.7.4, app 1.4.1 to 1.4.2</p>
+    <ul>
+      <li><b>Why is the screen blank?</b> Device settings can show what the Toto's own display did at this boot. It showed that a Raspberry Pi OS image never switched on the login on its screen, which 0.7.3 fixes, for images already out too.</li>
+      <li><b>A log of every update step</b>, in a scrolling box.</li>
+      <li>Livelier dogs: each mood plays gestures picked at random, so no two blink together.</li>
+      <li>On the web, the three-dots menu asks about deleting an agent rather than a menu that confirmed it.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261019">
+    <h2 id="d20261019">19 October 2026</h2>
+    <p class="note">Toto 0.7.0 to 0.7.1, app 1.4.0</p>
+    <ul>
+      <li><b>Terminals per project</b>, a tab each, that keep running when you leave. Text files an agent sends open in place, and what you were typing to an agent is kept.</li>
+      <li>A reconnecting phone is told which message queues are empty, and what was waiting is sent after a turn Claude died in.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261013">
+    <h2 id="d20261013">13 to 15 October 2026</h2>
+    <p class="note">Toto 0.6.0 to 0.6.2, app 1.2.1 to 1.3.1</p>
+    <ul>
+      <li><b>Memories and tasks</b> are kept in a database on the Toto, and tasks have tags.</li>
+      <li><b>Login details on the Toto's own screen</b>, with a code to scan, and <code>toto screen on</code> puts that screen on the display of a machine you installed Toto onto.</li>
+      <li>A project left unnamed takes its repository's name, and an agent left unnamed gets a name like <code>greg-the-builder</code>.</li>
+      <li>Plugin installs refresh the package lists first, and the plugin list reaches an app that connected early. Forgetting a Toto stops its notifications. The iOS app is built on Xcode Cloud.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261010">
+    <h2 id="d20261010">10 to 12 October 2026</h2>
+    <p class="note">Toto 0.4.0 to 0.5.0, app 1.1.0 to 1.2.0</p>
+    <ul>
+      <li><b>Memory and tasks</b>, with tools for agents to use them, and a screen for each in the app.</li>
+      <li><b>A face for every agent</b>: the dog, with its ears, eyes and mouth varied from the agent's id.</li>
+      <li><b>The server as a Docker image</b> for any machine that runs Docker, on x86 or ARM.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261008">
+    <h2 id="d20261008">8 to 9 October 2026</h2>
+    <p class="note">Toto 0.2.3 to 0.3.6, app 1.0.1</p>
+    <ul>
+      <li><b>Plugins</b>: signed bundles a Toto installs by name, with the GitHub and Cloudflare command lines first. Agents can send a file to your phone.</li>
+      <li><b>Share a Toto</b> with another phone by QR code, and use one in a browser, let in by a phone.</li>
+      <li><b>Pictures in a conversation</b>, both ways, and an agent's words streaming as it writes them.</li>
+      <li><b>Queue a message</b> while an agent works, or send it in to steer. Subagents show as cards. How an update or an install is going shows as it happens.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="d20261007">
+    <h2 id="d20261007">7 October 2026</h2>
+    <p class="note">Toto 0.1.0 to 0.2.2</p>
+    <ul>
+      <li>The first releases: the server on a Raspberry Pi, the app, and the relay between them. A Toto <b>updates itself from the app</b>, from releases checked against a key built into it.</li>
+      <li>Agents get a headless browser to check what they build.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <span>toto<span class="amber">_</span></span>
+  <a href="/">Home</a>
+  <a href="/docs">Documentation</a>
+  <a href="/privacy">Privacy policy</a>
+</footer>
+
+<script src="/toto.js"></script>
+</body>
+</html>

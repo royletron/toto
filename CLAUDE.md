@@ -55,7 +55,8 @@ Tests are `node --test`, next to the code as `*.test.ts` or `*.test.mjs`. No tes
 ## Releasing
 
 1. Bump `version` in `server/package.json`.
-2. `git tag vX.Y.Z && git push origin vX.Y.Z` (the tag must match).
+2. Say what changed, in plain words for the people who use it, at the top of `site/changelog.html` (add the day's section, or the versions to the one that is there).
+3. `git tag vX.Y.Z && git push origin vX.Y.Z` (the tag must match).
 
 `.github/workflows/release.yml` then tests, bundles, signs with the `RELEASE_KEY` secret, publishes the release, tells online Totos, builds the image, and builds the Android APK if there is an `EXPO_TOKEN` secret. The private signing key exists only as that secret. `release.pub` is its public half; changing it strands every Toto already out there. `plugin.pub` is the same for plugins, whose private half is the `PLUGIN_KEY` secret.
 
@@ -63,7 +64,7 @@ A release reaches real devices as root. Before tagging, run the changed path on 
 
 ### The app has versions of its own
 
-The app's version is `expo.version` in `app/app.json`, and its releases are tagged `app-v1.2.3`. To release the app: bump that version, commit, push, then `git tag app-vX.Y.Z && git push origin app-vX.Y.Z`. `.github/workflows/app.yml` checks the tag, builds the Android APK, attaches it to a GitHub pre-release and uploads it to EAS (where a refusal is only a warning). `app/release.sh` does the same from a machine with the Android SDK and an `eas login`, and pushes the tag itself (so the workflow then builds it a second time); `--play` also sends it to Play's internal testing.
+The app's version is `expo.version` in `app/app.json`, and its releases are tagged `app-v1.2.3`. To release the app: bump that version, add it to `site/changelog.html`, commit, push, then `git tag app-vX.Y.Z && git push origin app-vX.Y.Z`. `.github/workflows/app.yml` checks the tag, builds the Android APK, attaches it to a GitHub pre-release and uploads it to EAS (where a refusal is only a warning). `app/release.sh` does the same from a machine with the Android SDK and an `eas login`, and pushes the tag itself (so the workflow then builds it a second time); `--play` also sends it to Play's internal testing.
 
 The iOS app is built by Xcode Cloud from the same `app-v*` tag. Its workflow lives in App Store Connect, not here; what is here is `app/ios/ci_scripts/`, the only part of `ios/` in git. `ci_post_clone.sh` generates the project (and puts itself back, because prebuild in CI clears the folder), refuses a tag that is not app.json's version, and takes Xcode Cloud's build count as the build number. To try it: clone fresh, then `CI_TAG=app-v<version> CI_BUILD_NUMBER=1 sh app/ios/ci_scripts/ci_post_clone.sh`.
 
