@@ -55,9 +55,20 @@ export function typing() {
     /** Takes in some typing; says whether the last command changed. */
     feed(text?: string, key?: unknown) {
       let changed = false;
-      for (const ch of text ?? '') {
+      const chars = [...(text ?? '')];
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i];
         if (ch === '\n' || ch === '\r') changed = enter() || changed;
-        else if (ch >= ' ' && ch !== '\x7f') line += ch;
+        else if (ch === '\x7f' || ch === '\b') line = line.slice(0, -1);
+        else if (ch === '\x03' || ch === '\x15' || ch === '\x04') [line, unsure] = ['', false];
+        else if (ch === '\x1b') {
+          // A real terminal sends keys as escape sequences (an arrow is ESC [ A). They are not text, and
+          // whatever they did to the line is not known.
+          unsure = true;
+          if (chars[i + 1] === '[') for (i += 2; i < chars.length && !(chars[i] >= '@' && chars[i] <= '~'); i++);
+          else i += 1;
+        } else if (ch < ' ') unsure = true;
+        else line += ch;
       }
       if (key === 'enter') changed = enter() || changed;
       else if (key === 'backspace') line = line.slice(0, -1);
@@ -184,6 +195,126 @@ export function watchTerminal({ user, cwd, projectId }: Where, id: string, onScr
       if (name) child.stdin.write(`k ${name}\n`);
     },
     // Under sudo the process is not ours to signal; closing both ends makes it exit and clean up.
+    stop: () => {
+      child.stdin.end();
+      child.stdout.destroy();
+    },
+  };
+}
+
+// --- A terminal as a stream of bytes, for an emulator in the app (xterm.js) to draw. The frames above
+// are snapshots of what tmux has already worked out; this is what the session prints, as it prints it,
+// so the app's emulator does the work and full-screen programs such as vi look as they should.
+//
+// It rides on tmux's control mode, which can run beside the frame watcher (a pane has only one
+// pipe-pane, so that could not be shared): `tmux -C attach` prints `%output %<pane> <bytes>` for
+// everything the pane prints, with control characters and backslashes as three-digit octal (\033),
+// and takes commands on stdin.
+
+/** The bytes of a control-mode `%output` line's data: `\ooo` is the byte with that octal value. */
+export function unescapeOutput(data: Buffer): Buffer {
+  const out: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    const octal = data[i] === 0x5c && i + 3 < data.length ? data.subarray(i + 1, i + 4).toString('latin1') : '';
+    if (/^[0-7]{3}$/.test(octal)) {
+      out.push(parseInt(octal, 8));
+      i += 3;
+    } else out.push(data[i]);
+  }
+  return Buffer.from(out);
+}
+
+/**
+ * Reads control-mode output a chunk at a time, and calls `onOutput` with the bytes of each pane's output.
+ * Everything else it says (replies to commands, layout changes) is not wanted. A line ends at a newline;
+ * the newlines in output itself are escaped, so one cannot be mistaken for the end.
+ * ponytail: all panes, which is the one pane of a terminal unless someone splits it with tmux's own keys.
+ */
+export function controlOutput(onOutput: (bytes: Buffer) => void) {
+  let rest: Buffer = Buffer.alloc(0);
+  return (chunk: Buffer) => {
+    rest = Buffer.concat([rest, chunk]);
+    for (let end = rest.indexOf(0x0a); end >= 0; end = rest.indexOf(0x0a)) {
+      const line = rest.subarray(0, end);
+      rest = rest.subarray(end + 1);
+      if (line.subarray(0, 8).toString('latin1') !== '%output ') continue;
+      // After "%output %<pane> ".
+      const space = line.indexOf(0x20, 8);
+      if (space >= 0) onOutput(unescapeOutput(line.subarray(space + 1)));
+    }
+  };
+}
+
+/** The bytes to type for `text`, as the hexadecimal `send-keys -H` takes, a command line for every so many. */
+export function typeCommands(name: string, text: string, per = 400): string[] {
+  const bytes = Buffer.from(text, 'utf8');
+  const lines: string[] = [];
+  for (let at = 0; at < bytes.length; at += per) lines.push(`send-keys -t ${name} -H ${[...bytes.subarray(at, at + per)].map((b) => b.toString(16)).join(' ')}`);
+  return lines;
+}
+
+/** The modes a program in the session has set, and where its cursor is, as tmux reports them. */
+const FLAGS = ['alternate_on', 'keypad_cursor_flag', 'keypad_flag', 'cursor_flag', 'wrap_flag', 'insert_flag', 'mouse_standard_flag', 'mouse_button_flag', 'mouse_any_flag', 'mouse_sgr_flag', 'mouse_utf8_flag', 'cursor_x', 'cursor_y'];
+const SNAPSHOT = `tmux display-message -p -t "$1" '${FLAGS.map((f) => `#{${f}}`).join(' ')}' && printf '\\0' && tmux capture-pane -e -p -S -${SCROLLBACK} -t "$1"`;
+
+/**
+ * What to feed an emulator that has only just been attached, to make it look like the session does now:
+ * the screen the program has switched to, its modes, the text with its colours, and the cursor. Takes
+ * the output of the script above (flags, a NUL, the screen with scrollback).
+ */
+export function snapshotBytes(raw: string): Buffer {
+  const [head = '', ...body] = raw.split('\0');
+  const [alt, appCursor, appKeypad, cursor, wrap, insert, mouse, drag, any, sgr, utf8, x = 0, y = 0] = head.trim().split(' ').map(Number);
+  const lines = body.join('\0').replace(/\n$/, '').split('\n');
+  const on = (flag: number | undefined, set: string, unset = '') => (flag ? set : unset);
+  return Buffer.from(
+    on(alt, '\x1b[?1049h') +
+      on(appCursor, '\x1b[?1h') +
+      on(appKeypad, '\x1b=') +
+      on(!wrap ? 1 : 0, '\x1b[?7l') +
+      on(insert, '\x1b[4h') +
+      on(mouse, '\x1b[?1000h') +
+      on(drag, '\x1b[?1002h') +
+      on(any, '\x1b[?1003h') +
+      on(utf8, '\x1b[?1005h') +
+      on(sgr, '\x1b[?1006h') +
+      '\x1b[H\x1b[2J' +
+      lines.map((l) => `${l}\x1b[0m`).join('\r\n') +
+      `\x1b[${y + 1};${x + 1}H` +
+      on(!cursor ? 1 : 0, '\x1b[?25l'),
+  );
+}
+
+/** A fresh emulator's view of the session as it is now. */
+export const snapshotTerminal = ({ user, cwd, projectId }: Where, id: string) =>
+  run(user, cwd, 'sh', ['-c', SNAPSHOT, 'sh', session(projectId, id)]).then(({ stdout }) => snapshotBytes(stdout));
+
+/**
+ * Attaches to a session in control mode: `onData` gets what it prints, in bytes, `type` types raw bytes
+ * (what an emulator's keys come to), `resize` fits the session to the emulator, and `stop` lets go.
+ * `onEnd` is called once it has let go, for whatever reason, which includes the session ending.
+ */
+export function streamTerminal({ user, cwd, projectId }: Where, id: string, onData: (bytes: Buffer) => void, onEnd: () => void) {
+  const name = session(projectId, id);
+  const [file, args, opts] = command(user, cwd, 'sh', ['-c', 'exec tmux -C attach-session -t "$1"', 'sh', name]);
+  const child = spawn(file, args, { ...opts, stdio: ['pipe', 'pipe', 'ignore'] });
+  child.on('error', () => {});
+  child.on('exit', onEnd);
+  child.stdin.on('error', () => {});
+  const parse = controlOutput(onData);
+  // Attached once it has said anything (even an empty reply), after which nothing the session prints is missed.
+  let attached = () => {};
+  const ready = new Promise<void>((done) => (attached = done));
+  child.stdout.on('data', (chunk: Buffer) => {
+    attached();
+    parse(chunk);
+  });
+  child.on('exit', () => attached());
+  const tell = (line: string) => child.stdin.write(line + '\n');
+  return {
+    ready,
+    type: (text: string) => typeCommands(name, text).forEach(tell),
+    resize: (cols: number, rows: number) => tell(`resize-window -t ${name} -x ${cols} -y ${rows}`),
     stop: () => {
       child.stdin.end();
       child.stdout.destroy();

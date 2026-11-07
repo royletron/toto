@@ -2,6 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useConnection } from '../../connection';
+import { RawTerminal, hasRawTerminals } from '../../rawterminal';
 import { Terminal } from '../../terminal';
 import { ProjectTabs } from '../../tabs';
 import { Btn, Empty, Header, Reaching, Screen } from '../../ui';
@@ -12,7 +13,7 @@ const newTab = () => (Date.now().toString(36) + Math.random().toString(36).slice
 /** A project's terminals, a tab each. Opening the screen always lands in one: the newest, or a new one if there are none. */
 export default function TerminalScreen() {
   const { id, tab } = useLocalSearchParams<{ id: string; tab?: string }>();
-  const { projects, terminals, post, status, loaded } = useConnection();
+  const { projects, terminals, post, status, loaded, software } = useConnection();
   const project = projects.find((p) => p.id === id);
   const online = status === 'open';
   const ids = terminals[id];
@@ -59,7 +60,12 @@ export default function TerminalScreen() {
       ) : (
         <>
           {/* Keyed, so switching tabs closes one session's screen and opens the other's. */}
-          {shown ? <Terminal key={shown} projectId={id} terminalId={shown} /> : <Reaching what="its terminals" />}
+          {/* A Toto that can send bytes is drawn by a real emulator; an older one sends screens, drawn as before. */}
+          {shown ? (
+            hasRawTerminals(software?.version) ? <RawTerminal key={shown} projectId={id} terminalId={shown} /> : <Terminal key={shown} projectId={id} terminalId={shown} />
+          ) : (
+            <Reaching what="its terminals" />
+          )}
         </>
       )}
     </Screen>

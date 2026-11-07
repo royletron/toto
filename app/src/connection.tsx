@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Tag, Task } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
@@ -131,6 +131,8 @@ type Connection = {
   terminals: Record<string, string[]>;
   /** The last command typed into a terminal, by terminal id, for the ones that have had one. */
   termTitles: Record<string, string>;
+  /** Hears the output of a terminal opened raw, as it arrives. One listener to a terminal; returns what stops it. */
+  listenTerm: (terminalId: string, hear: (message: Extract<ServerMessage, { type: 'term_out' }>) => void) => () => void;
   /** Pictures fetched from the Toto so far, as base64, by picture id. */
   pictures: Record<string, string>;
   /** Fetches a picture from an agent's conversation, unless it is here or already on its way. */
@@ -249,6 +251,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [screens, setScreens] = useState<Connection['screens']>({});
   const [terminals, setTerminals] = useState<Connection['terminals']>({});
   const [termTitles, setTermTitles] = useState<Connection['termTitles']>({});
+  const termListeners = useRef(new Map<string, Parameters<Connection['listenTerm']>[1]>());
+  // The same function each render, as what listens for a terminal's output is set up once.
+  const listenTerm = useCallback<Connection['listenTerm']>((terminalId, hear) => {
+    termListeners.current.set(terminalId, hear);
+    return () => void (termListeners.current.get(terminalId) === hear && termListeners.current.delete(terminalId));
+  }, []);
   const [drafts, setDrafts] = useState<Connection['drafts']>({});
   // Each keystroke lands here, not in state, so typing does not redraw the whole app.
   const typed = useRef<Record<string, string>>({});
@@ -468,6 +476,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       }
       case 'term':
         setScreens((all) => ({ ...all, [msg.terminalId]: { screen: msg.screen, cursor: msg.cursor } }));
+        break;
+      case 'term_out':
+        termListeners.current.get(msg.terminalId)?.(msg);
         break;
       case 'terms':
         setTerminals((all) => ({ ...all, [msg.projectId]: msg.ids }));
@@ -718,7 +729,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, listenTerm, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

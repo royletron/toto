@@ -9,7 +9,7 @@ import { keepalive } from './keepalive.ts';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
-import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, typing, watchTerminal } from './terminal.ts';
+import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, snapshotTerminal, streamTerminal, typing, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
@@ -135,6 +135,9 @@ const running = new Map<string, ReturnType<typeof startClaude>>();
 const thinking = new Set<string>();
 // Terminals someone has open, by id: whose they are, who is watching, and how to stop.
 const terminals = new Map<string, { projectId: string; viewers: Set<Client>; screen?: Screen } & ReturnType<typeof watchTerminal>>();
+// The same terminals for apps that draw them with an emulator, which are sent bytes instead. `joining`
+// are viewers being given the screen as it is, and are held what the terminal prints meanwhile.
+const streams = new Map<string, { projectId: string; viewers: Set<Client>; joining: Map<Client, Buffer[]> } & ReturnType<typeof streamTerminal>>();
 const shell = (project: ProjectRecord) => ({ user: project.user, cwd: project.dir, projectId: project.id });
 const sshKey = await deviceKey();
 // Credentials change by editing the server's environment and restarting, so this is where projects catch up.
@@ -264,7 +267,7 @@ function view(phone: PhoneRecord | undefined, m: ServerMessage): ServerMessage |
 }
 
 // What a paused phone may still ask for: nothing that changes anything. (Watching a terminal is checked where it opens.)
-const READS = new Set(['sync', 'ping', 'image', 'file', 'task_file', 'term_list', 'term_open', 'term_close', 'register_push', 'unregister_push', 'check_update']);
+const READS = new Set(['sync', 'ping', 'image', 'file', 'task_file', 'term_list', 'term_open', 'term_close', 'term_resize', 'register_push', 'unregister_push', 'check_update']);
 
 /**
  * The projects a message reaches into, or undefined for one about the whole Toto. An id that is not
@@ -285,6 +288,9 @@ function projectsOf(msg: ClientMessage): string[] | undefined {
       return [];
     case 'term_input':
       return [terminals.get(msg.terminalId)?.projectId ?? none];
+    case 'term_raw':
+    case 'term_resize':
+      return [streams.get(msg.terminalId)?.projectId ?? none];
     case 'memory_save':
       return ofMemory({ layer: msg.layer, scope: msg.scope })?.concat(typeof msg.id === 'string' ? ofMemory(memories.get(msg.id)) ?? [none] : []);
     case 'memory_accept':
@@ -354,7 +360,7 @@ const titlesOf = (ids: string[]) => Object.fromEntries(ids.flatMap((id) => (typi
 /** Tells everyone with one of a project's terminals open (and `also`) which terminals it has. */
 async function tellTerms(project: ProjectRecord, also: Iterable<Client> = []) {
   const ids = await listTerminals(shell(project));
-  const watching = new Set([...also, ...[...terminals.values()].filter((t) => t.projectId === project.id).flatMap((t) => [...t.viewers])]);
+  const watching = new Set([...also, ...[...terminals.values(), ...streams.values()].filter((t) => t.projectId === project.id).flatMap((t) => [...t.viewers])]);
   for (const client of watching) send(client, { type: 'terms', projectId: project.id, ids, titles: titlesOf(ids) });
 }
 
@@ -525,11 +531,75 @@ const where = (agent: AgentRecord) => ({
 });
 
 const unwatch = (terminalId: string, ws: Client) => {
+  const stream = streams.get(terminalId);
+  if (stream) {
+    stream.joining.delete(ws);
+    if (stream.viewers.delete(ws) && !stream.viewers.size && !stream.joining.size) {
+      stream.stop();
+      streams.delete(terminalId);
+    }
+  }
   const term = terminals.get(terminalId);
   if (!term?.viewers.delete(ws) || term.viewers.size) return;
   term.stop();
   terminals.delete(terminalId);
 };
+
+// A byte stream is sent in pieces this size, gathered over a few milliseconds so a burst of output is a few messages.
+const RAW_PIECE = 48 * 1024;
+const dim = (n: unknown, max: number) => Math.min(max, Math.max(10, Math.floor(Number(n)) || 10));
+
+/** Opens a terminal for an app with an emulator: the screen as it is now, then everything the terminal prints. */
+async function joinStream(ws: Client, project: ProjectRecord, id: string, cols: number, rows: number) {
+  // Makes the session if there is none, and fits it to this viewer before it is described to them.
+  await openTerminal(shell(project), id, cols, rows);
+  let stream = streams.get(id);
+  if (!stream) {
+    const viewers = new Set<Client>();
+    const joining = new Map<Client, Buffer[]>();
+    let batch: Buffer[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      timer = undefined;
+      const all = Buffer.concat(batch);
+      batch = [];
+      for (let at = 0; at < all.length; at += RAW_PIECE) {
+        const data = all.subarray(at, at + RAW_PIECE).toString('base64');
+        for (const viewer of viewers) send(viewer, { type: 'term_out', terminalId: id, data });
+      }
+    };
+    const handle = streamTerminal(
+      shell(project),
+      id,
+      (bytes) => {
+        for (const queue of joining.values()) queue.push(bytes);
+        if (!viewers.size) return;
+        batch.push(bytes);
+        timer ??= setTimeout(flush, 12);
+      },
+      () => {
+        clearTimeout(timer);
+        if (streams.get(id)?.viewers === viewers) streams.delete(id);
+        void tellTerms(project, [...viewers, ...joining.keys()]);
+      },
+    );
+    stream = { projectId: project.id, viewers, joining, ...handle };
+    streams.set(id, stream);
+  }
+  if (stream.projectId !== project.id) return;
+  const joining: Buffer[] = [];
+  stream.joining.set(ws, joining);
+  // Not before the session is being listened to, or what it printed in between would be lost.
+  await stream.ready;
+  const screen = await snapshotTerminal(shell(project), id);
+  // Left, or the terminal ended, while the screen was being taken.
+  if (streams.get(id) !== stream || stream.joining.get(ws) !== joining) return;
+  send(ws, { type: 'term_out', terminalId: id, data: screen.toString('base64'), reset: true });
+  for (const piece of joining) for (let at = 0; at < piece.length; at += RAW_PIECE) send(ws, { type: 'term_out', terminalId: id, data: piece.subarray(at, at + RAW_PIECE).toString('base64') });
+  stream.joining.delete(ws);
+  stream.viewers.add(ws);
+  void tellTerms(project, [ws]);
+}
 
 /** Stops an agent and forgets it. The caller removes it from `state.agents`. */
 const forget = (agent: AgentRecord) => {
@@ -770,12 +840,15 @@ async function handle(msg: ClientMessage, ws: Client) {
       const project = state.projects.find((p) => p.id === msg.projectId);
       const id = msg.terminalId;
       if (!project || !isTerminalId(id)) return;
+      if (msg.raw === true) {
+        if (ws.phone?.paused && !streams.has(id) && !terminals.has(id) && !(await listTerminals(shell(project))).some((t) => t === id)) throw new Error('This phone is paused. It can watch the terminals there are, but not open new ones.');
+        return joinStream(ws, project, id, dim(msg.cols, 300), dim(msg.rows, 100));
+      }
       let term = terminals.get(id);
       if (term && term.projectId !== project.id) return;
       // Opening a tab that is not there makes one, which a paused phone may not.
       if (ws.phone?.paused && !term && !(await listTerminals(shell(project))).some((t) => t === id)) throw new Error('This phone is paused. It can watch the terminals there are, but not open new ones.');
-      const size = (n: unknown, max: number) => Math.min(max, Math.max(10, Math.floor(Number(n)) || 10));
-      await openTerminal(shell(project), id, size(msg.cols, 300), size(msg.rows, 100));
+      await openTerminal(shell(project), id, dim(msg.cols, 300), dim(msg.rows, 100));
       term = terminals.get(id);
       if (!term) {
         const viewers = new Set<Client>();
@@ -820,6 +893,21 @@ async function handle(msg: ClientMessage, ws: Client) {
       const project = state.projects.find((p) => p.id === term.projectId);
       if (typists.get(msg.terminalId)!.feed(text, msg.key) && project) void tellTerms(project);
       return term.type(text, msg.key);
+    }
+    case 'term_raw': {
+      // Whatever an emulator sends for its keys, as it sends it, into a terminal this client has open.
+      const stream = streams.get(msg.terminalId);
+      if (!stream?.viewers.has(ws) || typeof msg.data !== 'string') return;
+      const text = msg.data.slice(0, 10_000);
+      if (!typists.has(msg.terminalId)) typists.set(msg.terminalId, typing());
+      const project = state.projects.find((p) => p.id === stream.projectId);
+      if (typists.get(msg.terminalId)!.feed(text) && project) void tellTerms(project);
+      return stream.type(text);
+    }
+    case 'term_resize': {
+      const stream = streams.get(msg.terminalId);
+      if (!stream?.viewers.has(ws)) return;
+      return stream.resize(dim(msg.cols, 300), dim(msg.rows, 100));
     }
     case 'image': {
       const bytes = readImage(msg.agentId, msg.id);
@@ -1051,7 +1139,7 @@ function accept(wire: { send: (frame: string) => void; close: () => void }) {
   const closed = () => {
     if (!client) return;
     clients.delete(client);
-    for (const terminalId of [...terminals.keys()]) unwatch(terminalId, client);
+    for (const terminalId of new Set([...terminals.keys(), ...streams.keys()])) unwatch(terminalId, client);
     client = undefined;
   };
   const receive = (raw: string) => {

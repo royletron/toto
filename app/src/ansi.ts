@@ -17,7 +17,7 @@ export type Style = {
 export type Span = Style & { text: string };
 
 // The 16 named colours, tuned to sit with the app's palette. Index 0-7 normal, 8-15 bright.
-const NAMED = [
+export const NAMED = [
   '#30362A', '#F25C82', '#8BD45F', '#FFB000', '#6CA8E0', '#C792EA', '#6FD8C8', '#ECE6D2',
   '#959B85', '#FF8FA8', '#B5F08A', '#FFD166', '#9CC8F5', '#DDB6F2', '#A6F0E0', '#FFFFFF',
 ];

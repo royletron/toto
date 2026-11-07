@@ -235,6 +235,9 @@ export type ServerMessage =
   // A terminal's screen, sent to clients that have it open: recent scrollback and the
   // visible rows, with ANSI colour and style codes left in, and where the cursor is within it.
   | { type: 'term'; terminalId: string; screen: string; cursor: { row: number; col: number } }
+  // A raw terminal's output, as base64 bytes for the emulator to write. `reset`: start the emulator
+  // afresh first, as the first of these always does, and it holds the screen as it is now.
+  | { type: 'term_out'; terminalId: string; data: string; reset?: boolean }
   // What is typed into an agent's message box and not yet sent. `drafts` is every one, sent on `sync`
   // (and saying this Toto keeps them); `draft` is one changed by another client.
   | { type: 'drafts'; items: Record<string, string> }
@@ -347,7 +350,11 @@ export type ClientMessage =
   // `term_open` starts receiving one's screen, making it if there is none by that id (the app picks
   // a new one, of up to 16 lowercase letters and digits). `cols` and `rows` are what fits the viewer.
   | { type: 'term_list'; projectId: string }
-  | { type: 'term_open'; projectId: string; terminalId: string; cols: number; rows: number }
+  // `raw`: send the terminal as bytes (`term_out`) for an emulator in the app, not as screens (`term`); the
+  // app then types with `term_raw` and fits the terminal with `term_resize`. An older device sends screens.
+  | { type: 'term_open'; projectId: string; terminalId: string; cols: number; rows: number; raw?: boolean }
+  | { type: 'term_raw'; terminalId: string; data: string }
+  | { type: 'term_resize'; terminalId: string; cols: number; rows: number }
   | { type: 'term_close'; terminalId: string }
   // Ends a terminal and whatever is running in it.
   | { type: 'term_kill'; projectId: string; terminalId: string }
