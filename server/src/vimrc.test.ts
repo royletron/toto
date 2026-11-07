@@ -32,18 +32,13 @@ test('a project user gets a vim setup that works while typing, only if they have
 
 const hasVi = spawnSync('vi', ['--version']).status === 0;
 test('with it, vi is not in Vi-compatible mode and its arrow keys are understood while typing', { skip: !hasVi }, () => {
-  const ask = (h: string) => {
-    const out = join(h, 'out.txt');
-    // Started as vi is, not in Ex mode (-e) or silently (-s), which would not read the files this is about.
-    spawnSync('vi', ['-c', `redir! > ${out} | set compatible? esckeys? | redir END`, '-c', 'q'], { env: { PATH: process.env.PATH, HOME: h, TERM: 'xterm' }, input: '', timeout: 10_000 });
-    return readFileSync(out, 'utf8').replace(/\s+/g, ' ').trim();
-  };
-  const without = home();
   const made = home();
   setUp(made);
-  // As Debian ships it, vi is compatible and ignores escape sequences; with the file it does neither.
-  assert.match(ask(without), /\bcompatible\b/);
-  assert.doesNotMatch(ask(without), /\bnocompatible\b/);
-  assert.match(ask(made), /nocompatible/);
-  assert.match(ask(made), /\besckeys\b/);
+  const out = join(made, 'out.txt');
+  // Started as vi is, not in Ex mode (-e) or silently (-s), which would not read the files this is about.
+  spawnSync('vi', ['-c', `redir! > ${out} | set compatible? esckeys? | redir END`, '-c', 'q'], { env: { PATH: process.env.PATH, HOME: made, TERM: 'xterm' }, input: '', timeout: 10_000 });
+  // Whatever vi was before (Debian's starts compatible, others do not): with the file it is not, and it reads escape sequences.
+  const asked = readFileSync(out, 'utf8').replace(/\s+/g, ' ').trim();
+  assert.match(asked, /\bnocompatible\b/);
+  assert.match(asked, /\besckeys\b/);
 });
