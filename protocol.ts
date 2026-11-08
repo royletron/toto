@@ -163,6 +163,10 @@ export type Stats = {
   temp?: number;
   /** A Raspberry Pi says when its power supply is not giving it enough. */
   undervoltage?: boolean;
+  /** Bytes of the card (or disk) beyond the root partition, which `expand_disk` can add to it: a bigger card than was cloned from. Absent when there are none, or this cannot be said. */
+  room?: number;
+  /** Expanding has been set up and finishes when this Toto next restarts. */
+  resizePending?: boolean;
 };
 
 export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
@@ -328,6 +332,11 @@ export type ClientMessage =
   | { type: 'check_update' }
   // Ask what is using the disk, by project. Answered with `disk_usage`; can take a while on a full card.
   | { type: 'disk_usage' }
+  // Use the rest of the card: grow the root partition to the end of it, which finishes when the device next restarts.
+  // Only for a card that has room beyond it (see `room` in `stats`). Answered with `stats`.
+  | { type: 'expand_disk' }
+  // Restart the device, as from its settings. Refused while agents are working.
+  | { type: 'reboot' }
   // Clear what is only a cache, in every project and the system's downloaded packages. Answered with `disk_usage`.
   | { type: 'clean_disk' }
   // Ask how the device is doing: its processor, memory, disk and so on. Answered with `stats`, as often as asked.

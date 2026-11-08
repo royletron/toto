@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
+import { cardRoom, resizePending } from './card.ts';
 import { cleanDisk, diskUsage, readDisk } from './disk.ts';
 import { keepalive } from './keepalive.ts';
 import { readStats } from './stats.ts';
@@ -31,7 +32,9 @@ import {
   dataDir,
   deviceKey,
   installEnv,
+  expandRootfs,
   killAgent,
+  reboot,
   asksUser,
   openApprovals,
   readAs,
@@ -1137,6 +1140,17 @@ async function handle(msg: ClientMessage, ws: Client) {
       watchDisk();
       return send(ws, { type: 'disk_usage', usage, freed: Math.max(0, usage.disk.free - before) });
     }
+    case 'expand_disk': {
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can do this.');
+      if (cardRoom() === undefined) throw new Error(resizePending() ? 'That is already set up. It finishes when this Toto restarts.' : 'There is no room on this Toto’s card beyond what it already uses.');
+      await expandRootfs();
+      return send(ws, { type: 'stats', stats: await readStats(dataDir) });
+    }
+    case 'reboot':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can restart it.');
+      // As with an update: a restart would cut off whatever an agent is in the middle of.
+      if (thinking.size) throw new Error('Agents are working. Restart when they have finished.');
+      return void (await reboot());
     case 'stats':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
       return send(ws, { type: 'stats', stats: await readStats(dataDir) });

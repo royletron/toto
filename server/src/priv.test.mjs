@@ -23,7 +23,7 @@ test('listing Wi-Fi prints the networks and succeeds', () => {
 });
 
 test('anything that is not one of its commands, or names no project user, is refused', () => {
-  for (const args of [[], ['wifi-list-all'], ['delete-user', 'root'], ['create-user', 'toto-p-zzzzzzzz'], ['wifi-country', 'gb; reboot'], ['plugin-install'], ['plugin-install', '../gh'], ['plugin-remove', 'gh;reboot'], ['plugin-install', 'Gh'], ['clean-apt', 'extra']]) assert.equal(run(...args).status, 2, args.join(' '));
+  for (const args of [[], ['wifi-list-all'], ['delete-user', 'root'], ['create-user', 'toto-p-zzzzzzzz'], ['wifi-country', 'gb; reboot'], ['plugin-install'], ['plugin-install', '../gh'], ['plugin-remove', 'gh;reboot'], ['plugin-install', 'Gh'], ['clean-apt', 'extra'], ['expand-rootfs', 'extra'], ['reboot', 'now']]) assert.equal(run(...args).status, 2, args.join(' '));
 });
 
 test('without the capability to change the firewall, the helper still says so, and only a file root wrote lets it carry on', () => {

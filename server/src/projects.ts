@@ -76,6 +76,12 @@ export const KILL_AGENT = `for p in /proc/[0-9]*; do tr '\\0' '\\n' < "$p/enviro
 /** Ends an agent's processes, as the project's user: claude and whatever it is running. For a turn that will not stop when asked to. */
 export const killAgent = (user: string | undefined, cwd: string, agentId: string) => run(user, cwd, 'sh', ['-c', KILL_AGENT, 'sh', agentId]);
 
+/** Grows the root partition to the end of its card, finishing on the next start. */
+export const expandRootfs = () => sh('sudo', ['-n', PRIV, 'expand-rootfs']);
+
+/** Restarts the device. */
+export const reboot = () => sh('sudo', ['-n', PRIV, 'reboot']);
+
 /** Clears the packages apt has downloaded and kept, which are only a cache. */
 export const cleanApt = () => sh('sudo', ['-n', PRIV, 'clean-apt']);
 

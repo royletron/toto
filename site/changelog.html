@@ -29,9 +29,10 @@
 
   <section aria-labelledby="d20261108">
     <h2 id="d20261108">8 November 2026</h2>
-    <p class="note">Toto 0.10.0, app 1.8.0</p>
+    <p class="note">Toto 0.10.0 to 0.10.1, app 1.8.0 to 1.8.1</p>
     <ul>
       <li><b>Warnings when the disk is filling up.</b> A Toto that fills its card stops answering, so it now looks at its disk every minute. When space gets short the app shows a warning at the top of the projects list and sends a notification, then once a day while it stays short. When almost nothing is left it clears caches that only make things faster and starts nothing new until there is room. Needs Toto 0.10.0 and app 1.8.0.</li>
+      <li><b>Use all of a bigger card.</b> If you move a Toto to a larger SD card by copying the old one, the extra space is not used until the partition is grown. Settings now says when the card has room beyond what the Toto uses, and one button grows the partition, which finishes when the Toto restarts, with a button to restart it from the app. This is a narrow, checked action and not a root terminal: the Toto is deliberately kept from having root over the network. Needs Toto 0.10.1 and app 1.8.1.</li>
       <li><b>What is using the space.</b> A new Disk section in settings shows each project's size and how much of it is cache, and clears the caches (each project's package caches, and the packages the system downloaded). Nothing of yours is deleted.</li>
       <li><b>Updates and plugin installs no longer leave their downloads behind.</b> They kept every package they fetched, which was 578 MB on one Toto. The next update clears it.</li>
       <li><b>Fixed a crash that a full disk made likely.</b> A command that finished before the Toto had finished talking to it could end the whole Toto, and a disk with no room made commands fail fast, which is when it happened.</li>

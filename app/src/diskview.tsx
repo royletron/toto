@@ -1,9 +1,11 @@
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { useConnection } from './connection';
 import { Face } from './face';
 import { size } from './figures';
 import { Btn, Rule, Txt, styles } from './ui';
+import { atLeast } from './version';
 
 /** Above the projects when the Toto's disk is short of space: a full one stops it answering, so this does not wait to be asked. */
 export function DiskWarning() {
@@ -24,6 +26,50 @@ export function DiskWarning() {
   );
 }
 
+/**
+ * A card bigger than the Toto uses, as after copying it to a larger one: use the rest of it, which is set up
+ * now and finishes when the Toto restarts, and restart it from here.
+ */
+function BiggerCard() {
+  const { stats, software, post, status } = useConnection();
+  const room = atLeast(software?.version, 0, 10, 1) ? stats?.room : undefined;
+  const pending = !!stats?.resizePending;
+  // Between asking and the answer, which says it is set up (or an alert says why not).
+  const [working, setWorking] = useState(false);
+  useEffect(() => {
+    if (!working) return;
+    const timer = setTimeout(() => setWorking(false), 20_000);
+    return () => clearTimeout(timer);
+  }, [working]);
+  if (!room && !pending) return null;
+  const online = status === 'open';
+  const expand = () =>
+    Alert.alert('Use the rest of the card?', 'This grows the Toto’s main partition to the end of the card, and finishes when it restarts. Do it on a card that was copied from another, and keep a copy of anything you could not lose.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Use it',
+        onPress: () => {
+          setWorking(true);
+          post({ type: 'expand_disk' });
+        },
+      },
+    ]);
+  const restart = () =>
+    Alert.alert('Restart this Toto?', 'It cannot be reached for a minute or two, and agents that are working stop it from restarting.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Restart', style: 'destructive', onPress: () => post({ type: 'reboot' }) },
+    ]);
+  return (
+    <View style={{ gap: 10 }}>
+      <Txt weight="bold">A bigger card</Txt>
+      <Txt tone="ghost" small>
+        {pending ? 'Set up. The whole card is used once this Toto restarts, which can take a few minutes the first time.' : `This card has ${size(room!)} beyond what the Toto uses. Use the rest of it to give the projects more room.`}
+      </Txt>
+      {pending ? <Btn kind="primary" label="Restart now" onPress={restart} disabled={!online} /> : <Btn label={working ? 'Setting up…' : 'Use the rest of the card'} onPress={expand} busy={working} disabled={!online || working} />}
+    </View>
+  );
+}
+
 /** What is using the disk, by project, and a way to clear what is only a cache. */
 export function DiskPanel() {
   const { request, pending, diskUsage, status, busy } = useConnection();
@@ -39,6 +85,7 @@ export function DiskPanel() {
   const clearable = usage ? usage.apt + usage.projects.reduce((sum, p) => sum + p.cache, 0) : 0;
   return (
     <View style={{ gap: 12 }}>
+      <BiggerCard />
       {usage && (
         <View style={{ gap: 10 }}>
           {typeof diskUsage?.freed === 'number' && <Txt tone="phosphor" small>{diskUsage.freed > 0 ? `Cleared ${size(diskUsage.freed)}.` : 'There was nothing to clear.'}</Txt>}

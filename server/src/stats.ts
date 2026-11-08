@@ -2,6 +2,7 @@
 import { readFileSync, readdirSync, statfsSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import type { Stats } from '../../protocol.ts';
+import { cardRoom, resizePending } from './card.ts';
 
 /** Memory and swap in bytes, out of /proc/meminfo, which counts in kilobytes. */
 export function parseMeminfo(text: string) {
@@ -65,7 +66,7 @@ export async function readStats(dir: string): Promise<Stats> {
   const memory = parseMeminfo(read('/proc/meminfo') ?? '');
   const disk = statfsSync(dir);
   const load = (read('/proc/loadavg') ?? '').split(' ').slice(0, 3).map(Number);
-  const [temp, volt] = [temperature(), undervoltage()];
+  const [temp, volt, room] = [temperature(), undervoltage(), cardRoom()];
   return {
     cpu,
     cores: availableParallelism(),
@@ -76,5 +77,7 @@ export async function readStats(dir: string): Promise<Stats> {
     uptime: Math.round(Number((read('/proc/uptime') ?? '').split(' ')[0]) || 0),
     ...(temp !== undefined ? { temp } : null),
     ...(volt !== undefined ? { undervoltage: volt } : null),
+    ...(room !== undefined ? { room } : null),
+    ...(resizePending() ? { resizePending: true } : null),
   };
 }

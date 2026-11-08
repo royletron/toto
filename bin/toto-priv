@@ -2,7 +2,7 @@
 # The only things toto-server may run as root: create or delete a project's Linux user, say
 # whether that user may reach the local network, list or join Wi-Fi networks, start an update, and
 # install or remove a plugin, say why the machine's own display is not showing Toto's screen, and clear
-# apt's downloaded packages.
+# apt's downloaded packages, grow the root partition into the rest of its card, and restart.
 # Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
 set -euo pipefail
 
@@ -41,6 +41,18 @@ case "${1:-}" in
     echo "--- journal"
     journalctl -b --no-pager -o short-monotonic -n 400 2>&1 | grep -iE 'getty|login|sudo|totoscreen|pam_|toto-screen' | tail -n 40 || true
     exit 0
+    ;;
+  expand-rootfs)
+    # Grow the root partition to the end of the card, which finishes on the next start. It is the way
+    # raspi-config does it, here only for a root filesystem that is on a card, an NVMe drive or a USB disk.
+    [ "$#" -eq 1 ] || { echo "toto-priv: expand-rootfs takes no arguments" >&2; exit 2; }
+    src="$(findmnt -n -o SOURCE /)"
+    [[ "$src" =~ ^/dev/(mmcblk[0-9]+p|nvme[0-9]+n[0-9]+p|sd[a-z]+)[0-9]+$ ]] || { echo "toto-priv: the root filesystem is not on a disk that can be expanded here" >&2; exit 3; }
+    exec /usr/bin/raspi-config nonint do_expand_rootfs
+    ;;
+  reboot)
+    [ "$#" -eq 1 ] || { echo "toto-priv: reboot takes no arguments" >&2; exit 2; }
+    exec /usr/bin/systemctl reboot
     ;;
   clean-apt)
     # The packages apt downloaded to install things and has kept since: only a cache, and the biggest one.
