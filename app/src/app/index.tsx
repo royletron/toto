@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Project } from '../connection';
+import { DiskWarning } from '../diskview';
 import { repoName } from '../names';
 import { Face } from '../face';
 import { moodOfMany } from '../moods';
@@ -119,6 +120,8 @@ export default function Projects() {
           </View>
         </Pressable>
       )}
+      {/* A full disk stops the Toto answering, so a short one is said at the top, to be seen without looking. */}
+      <DiskWarning />
       <View style={{ flex: 1 }}>
         {/* Until the Toto has said what it holds, an empty list would be a guess. */}
         {!loaded ? <Reaching what="your projects" /> : (

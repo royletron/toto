@@ -182,6 +182,8 @@ export type ServerMessage =
       agents: Agent[];
       identity: Identity;
       sshKey?: string;
+      // Present only while the disk is short of space, which is when the app should say so.
+      lowDisk?: Disk;
       /** The version of Toto this device runs; `latest` is set when a newer one has been released. */
       version: string;
       latest?: string;
@@ -223,6 +225,8 @@ export type ServerMessage =
   | { type: 'plugin_login'; name: string; url: string; code: string }
   // The answer to `stats`.
   | { type: 'stats'; stats: Stats }
+  // The answer to `disk_usage` and to `clean_disk`, which also says how much it freed.
+  | { type: 'disk_usage'; usage: DiskUsage; freed?: number }
   // The answer to `display_log`: plain text, for the person to read or pass on.
   | { type: 'display_log'; text: string }
   // The answer to `job_log`: the latest update's or plugin install's steps and output, oldest first.
@@ -322,6 +326,10 @@ export type ClientMessage =
   | { type: 'plugin_token'; name: string; token: string }
   | { type: 'plugin_logout'; name: string }
   | { type: 'check_update' }
+  // Ask what is using the disk, by project. Answered with `disk_usage`; can take a while on a full card.
+  | { type: 'disk_usage' }
+  // Clear what is only a cache, in every project and the system's downloaded packages. Answered with `disk_usage`.
+  | { type: 'clean_disk' }
   // Ask how the device is doing: its processor, memory, disk and so on. Answered with `stats`, as often as asked.
   | { type: 'stats' }
   // Ask why this device's own screen is not showing Toto's screen. Answered with `display_log`.
@@ -379,3 +387,9 @@ export type ClientMessage =
   | { type: 'term_kill'; projectId: string; terminalId: string }
   // Types `text`, then presses `key`, into a terminal this client has open. Sent per keystroke.
   | { type: 'term_input'; terminalId: string; text?: string; key?: TermKey };
+
+/** How full the disk a Toto keeps its projects on is. `level` is how short of space it is. */
+export type Disk = { total: number; free: number; level: 'ok' | 'low' | 'critical' };
+
+/** What is using the space, by project, for its owner. Sizes in bytes; `cache` is the part that can be cleared, `apt` the system's downloaded packages (also clearable). */
+export type DiskUsage = { projects: { id: string; name: string; bytes: number; cache: number }[]; apt: number; data: number; disk: Disk };

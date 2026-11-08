@@ -30,6 +30,7 @@ export async function pushToken(ask = true): Promise<string | undefined> {
 /** The agent a tapped notification was about and the Toto it came from, if the app was opened by one. */
 export function useTapped(): { agentId: string; device?: string } | undefined {
   const data = Notifications.useLastNotificationResponse()?.notification.request.content.data;
-  if (typeof data?.agentId !== 'string') return undefined;
+  // A notification about the device itself, such as a full disk, has no agent to open.
+  if (typeof data?.agentId !== 'string' || !data.agentId) return undefined;
   return { agentId: data.agentId, device: typeof data.device === 'string' ? data.device : undefined };
 }

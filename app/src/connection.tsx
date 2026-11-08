@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Stats, Tag, Task } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Disk, DiskUsage, FileRef, Flag, Identity, ImageRef, Memory, Mode, Phone, Plugin, Progress, Project, ServerMessage, Stats, Tag, Task } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -93,6 +93,10 @@ type Connection = {
   plugins?: Plugin[];
   /** The code to enter, and where, for a plugin sign-in that is under way. */
   pluginLogin?: { name: string; url: string; code: string };
+  /** Set while the Toto's disk is short of space, which is when to say so. */
+  lowDisk?: Disk;
+  /** What is using the disk, once asked for, and how much clearing the caches last freed. */
+  diskUsage?: { usage: DiskUsage; freed?: number };
   /** How the Toto is doing, as of the latest answer to `stats`, and how its processor and memory have been going. */
   stats?: Stats;
   statsHistory: { cpu: number[]; memory: number[] };
@@ -242,6 +246,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [queued, setQueued] = useState<Connection['queued']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
   const [displayLog, setDisplayLog] = useState<string>();
+  const [lowDisk, setLowDisk] = useState<Disk>();
+  const [diskUsage, setDiskUsage] = useState<Connection['diskUsage']>();
   const [stats, setStats] = useState<Stats>();
   const [statsHistory, setStatsHistory] = useState<Connection['statsHistory']>({ cpu: [], memory: [] });
   const [jobLog, setJobLog] = useState<string[]>();
@@ -351,6 +357,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           if (was !== msg.claude) setClaudeLogin(undefined);
           return msg.claude;
         });
+        setLowDisk(msg.lowDisk);
         setPlugins(msg.plugins);
         setFlags(msg.flags);
         setProgress(msg.progress);
@@ -460,6 +467,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       case 'job_log':
         setJobLog(msg.lines);
         break;
+      case 'disk_usage':
+        setPending(undefined);
+        setDiskUsage({ usage: msg.usage, freed: msg.freed });
+        break;
       case 'stats': {
         setStats(msg.stats);
         const used = msg.stats.memory.total ? Math.round((100 * (msg.stats.memory.total - msg.stats.memory.available)) / msg.stats.memory.total) : 0;
@@ -564,6 +575,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setAgents([]);
     keepEvents({}, {});
     setStats(undefined);
+    setLowDisk(undefined);
+    setDiskUsage(undefined);
     setStatsHistory({ cpu: [], memory: [] });
     expected.current = {};
     asked.current = {};
@@ -743,7 +756,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, stats, statsHistory, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, listenTerm, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, memories, tasks, tags, notes, attachFile, progress, live, queued, pluginLogin, displayLog, jobLog, lowDisk, diskUsage, stats, statsHistory, phones, owner, paused, limited, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, earlier, loadEarlier, activity, tally, screens, terminals, termTitles, listenTerm, pictures, wantPicture, wantFile, dropPicture, say, draftOf, keepDraft, drafts }}>
       {children}
     </Context.Provider>
   );

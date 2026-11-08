@@ -5,10 +5,11 @@
 
 const ENDPOINT = 'https://exp.host/--/api/v2/push/send';
 
-export type PushKind = 'approval' | 'done';
+export type PushKind = 'approval' | 'done' | 'disk';
 const TEXT: Record<PushKind, string> = {
   approval: 'An agent is waiting for your go-ahead.',
   done: 'An agent has finished.',
+  disk: 'This Toto is running out of disk space.',
 };
 
 export const isPushToken = (t: unknown): t is string =>
@@ -27,9 +28,9 @@ export const pushMessage = (tokens: string[], kind: PushKind, agentId: string, f
   channelId: 'default',
   sound: 'default',
   // A waiting agent should wake the phone; a finished one can arrive when convenient.
-  priority: kind === 'approval' ? 'high' : 'default',
-  // One notification per agent: a newer one replaces the last instead of piling up.
-  tag: agentId,
+  priority: kind === 'done' ? 'default' : 'high',
+  // One notification per agent (or of its kind, for one that is about the device): a newer one replaces the last instead of piling up.
+  tag: agentId || kind,
 });
 
 /** The tokens Expo's answer says are no longer registered, and so should be forgotten. */

@@ -1,7 +1,8 @@
 #!/bin/bash
 # The only things toto-server may run as root: create or delete a project's Linux user, say
 # whether that user may reach the local network, list or join Wi-Fi networks, start an update, and
-# install or remove a plugin, and say why the machine's own display is not showing Toto's screen.
+# install or remove a plugin, say why the machine's own display is not showing Toto's screen, and clear
+# apt's downloaded packages.
 # Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
 set -euo pipefail
 
@@ -40,6 +41,11 @@ case "${1:-}" in
     echo "--- journal"
     journalctl -b --no-pager -o short-monotonic -n 400 2>&1 | grep -iE 'getty|login|sudo|totoscreen|pam_|toto-screen' | tail -n 40 || true
     exit 0
+    ;;
+  clean-apt)
+    # The packages apt downloaded to install things and has kept since: only a cache, and the biggest one.
+    [ "$#" -eq 1 ] || { echo "toto-priv: clean-apt takes no arguments" >&2; exit 2; }
+    exec /usr/bin/apt-get clean
     ;;
   wifi-list)
     # In use, signal, security, name; the name last because it is the field that may contain colons.

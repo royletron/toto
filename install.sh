@@ -116,6 +116,11 @@ if [ -e /etc/systemd/system/getty@tty1.service.d/zz-toto.conf ]; then
   systemctl start --no-block getty@tty1.service 2>/dev/null || true
 fi
 
+# What apt downloaded and the lists it fetched were only to install with, and on a small card they were
+# hundreds of megabytes, kept for good. (Each run updates first, so nothing needs them.)
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
 # Only to a person at a terminal: an update runs this too, and its output is kept in the system log.
 [ -t 1 ] || exit 0
 echo

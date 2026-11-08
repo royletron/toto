@@ -22,6 +22,8 @@ test('sizes and times are said the way a person would', () => {
   assert.equal(size(512 * 1024 ** 2), '512 MB');
   assert.equal(size(3.7 * 1024 ** 3), '3.7 GB');
   assert.equal(size(250 * 1024 ** 3), '250 GB');
+  assert.equal(size(300 * 1024), 'under 1 MB', 'something small is not nothing');
+  assert.equal(size(0), '0 MB');
   assert.equal(span(5 * 60), '5 min');
   assert.equal(span(3 * 3600 + 20 * 60), '3 h 20 min');
   assert.equal(span(2 * 86400 + 21 * 3600 + 900), '2 d 21 h');

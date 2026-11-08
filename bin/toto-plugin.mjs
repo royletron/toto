@@ -13,7 +13,7 @@
 //   toto-plugin.mjs install <name>
 //   toto-plugin.mjs remove <name>
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { track } from './toto-progress.mjs';
 import { newer, signedBy } from './toto-update.mjs';
@@ -100,6 +100,10 @@ const aptInstall = (steps) => async (packages) => {
   const env = { DEBIAN_FRONTEND: 'noninteractive' };
   await steps.run('Updating package lists', 'apt-get', ['update'], env);
   await steps.run('Installing packages', 'apt-get', ['install', '-y', '--no-install-recommends', '--', ...packages], env);
+  // What apt downloaded and the lists it fetched are only to install with, and take hundreds of megabytes of a small card.
+  // (The next install updates first, as this did.)
+  await steps.run('Tidying up', 'apt-get', ['clean'], env);
+  for (const entry of readdirSync('/var/lib/apt/lists')) rmSync(`/var/lib/apt/lists/${entry}`, { recursive: true, force: true });
 };
 
 // Without install scripts: they would run as root, and are not covered by the plugin's signature.

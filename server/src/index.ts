@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
+import { cleanDisk, diskUsage, readDisk } from './disk.ts';
 import { keepalive } from './keepalive.ts';
 import { readStats } from './stats.ts';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
@@ -30,6 +31,7 @@ import {
   dataDir,
   deviceKey,
   installEnv,
+  killAgent,
   asksUser,
   openApprovals,
   readAs,
@@ -208,6 +210,10 @@ const checkForPlugins = async () => {
   if (changed) broadcast(snapshot());
 };
 
+// How full the disk is, as of the last look (see watchDisk), and when the owner was last told it is short.
+let disk = readDisk(dataDir);
+let toldAboutDisk = 0;
+
 const snapshot = (): ServerMessage => ({
   type: 'state',
   name: state.name,
@@ -216,6 +222,7 @@ const snapshot = (): ServerMessage => ({
   agents: state.agents,
   identity: state.identity,
   sshKey,
+  ...(disk.level !== 'ok' ? { lowDisk: disk } : null),
   version,
   latest: latest === version ? undefined : latest,
   updating,
@@ -326,6 +333,12 @@ function mayDo(phone: PhoneRecord | undefined, msg: ClientMessage) {
   if (!reaches.every((id) => sees(phone, id))) throw new Error('That project is not shared with this phone.');
 }
 
+/** Refuses to start anything new when the disk is nearly full: it would only make the Toto stop answering. */
+function needSpace() {
+  disk = readDisk(dataDir);
+  if (disk.level === 'critical') throw new Error('This Toto’s disk is almost full, so it is not starting anything new. Clear some space from its settings first.');
+}
+
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
 // One line, and not something git could take for an option.
@@ -380,7 +393,7 @@ const notify = (kind: PushKind, agent: AgentRecord) => {
   const left = state.phones.filter((p) => !sees(p, agent.projectId) || (kind === 'approval' && p.paused)).flatMap((p) => p.push ?? []);
   notifyAll(state.pushTokens.filter((t) => !left.includes(t)), kind, agent);
 };
-const notifyAll = (tokens: string[], kind: PushKind, agent: AgentRecord) =>
+const notifyAll = (tokens: string[], kind: PushKind, agent: { id: string }) =>
   void push(tokens, kind, agent.id, { name: state.name, id: deviceId }).then((dead) => {
     if (!dead.length) return;
     state.pushTokens = state.pushTokens.filter((t) => !dead.includes(t));
@@ -460,7 +473,8 @@ function giveTask(agent: AgentRecord, task: ReturnType<typeof tasks.list>[number
 }
 
 const emit = (agent: AgentRecord, event: AgentEvent) => {
-  const stopped = event.type === 'done' && stopping.delete(agent.id);
+  // A turn that was being stopped ends as a stop, whether Claude ended it as an error, which it does, or its processes were killed.
+  const stopped = (event.type === 'done' || event.type === 'error') && stopping.delete(agent.id);
   // Claude ends a stopped turn as an error; it is not one. Older apps ignore `stopped` and see a quiet end.
   if (stopped) event = { type: 'done', isError: false, stopped: true };
   // Whatever was being written comes before whatever happened next.
@@ -761,6 +775,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       return save();
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
+      needSpace();
       const id = newId();
       const { user, dir } = await createProject(id, msg.repo.trim(), state.identity, projectEnv({ id }));
       // A new project user starts off the local network; toto-priv saw to that when it made the user.
@@ -821,6 +836,7 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'create_agent': {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project || !isName(msg.name) || !isMode(msg.mode)) throw new Error('An agent needs a project and a name.');
+      needSpace();
       const harness = 'claude';
       const id = newId();
       const cwd = msg.worktree === true ? await addWorktree(project, id) : project.dir;
@@ -949,6 +965,7 @@ async function handle(msg: ClientMessage, ws: Client) {
     }
     case 'prompt': {
       if (agent?.harness !== 'claude' || typeof msg.text !== 'string') return;
+      needSpace();
       const sent = Array.isArray(msg.images) ? msg.images.slice(0, 6) : [];
       const pictures = sent.flatMap((p) => {
         const data = ws.uploads?.get(p?.id)?.join('');
@@ -979,10 +996,17 @@ async function handle(msg: ClientMessage, ws: Client) {
       waiting.splice(msg.index, 1);
       return tellQueue(agent.id);
     }
-    case 'interrupt':
+    case 'interrupt': {
       if (!agent || !thinking.has(agent.id) || !running.has(agent.id)) return;
+      const again = stopping.has(agent.id);
       stopping.add(agent.id);
-      return running.get(agent.id)!.interrupt();
+      running.get(agent.id)!.interrupt();
+      // Claude is asked to stop. One that is stuck (in a tool that does not end, or with nowhere to write) never
+      // answers, so if the turn is still going after a few seconds, or the person asks again, what it started is killed.
+      const project = state.projects.find((p) => p.id === agent.projectId);
+      const kill = () => thinking.has(agent.id) && stopping.has(agent.id) && void killAgent(project?.user, agent.cwd, agent.id).catch((err) => console.error(`stopping ${agent.name}: ${err.message}`));
+      return again ? kill() : void setTimeout(kill, 8_000).unref();
+    }
     case 'approve':
       if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true, answersOf(msg.answers));
       return;
@@ -999,6 +1023,7 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'plugin_install':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can change its plugins.');
       if (!isPluginName(msg.name)) throw new Error('That is not a plugin name.');
+      needSpace();
       follow();
       await installPlugin(msg.name);
       progress = undefined;
@@ -1100,6 +1125,17 @@ async function handle(msg: ClientMessage, ws: Client) {
       await cancelPluginLogin(name);
       if (login) keepToken(login.env, undefined);
       return refreshAgents();
+    }
+    case 'disk_usage':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
+      return send(ws, { type: 'disk_usage', usage: await diskUsage(state.projects, dataDir) });
+    case 'clean_disk': {
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can do this.');
+      const before = readDisk(dataDir).free;
+      await cleanDisk(state.projects);
+      const usage = await diskUsage(state.projects, dataDir);
+      watchDisk();
+      return send(ws, { type: 'disk_usage', usage, freed: Math.max(0, usage.disk.free - before) });
     }
     case 'stats':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can see this.');
@@ -1410,6 +1446,24 @@ wss.on('listening', () => {
   console.log(`toto-server on :${port}, data in ${dataDir}${relayUrl ? `, relay ${relayUrl}` : ''}`);
   if (!process.env.TOTO_TOKEN) console.log(`token: ${token}`);
 });
+
+// --- The disk. A full one stops this Toto answering at all, so it is looked at every minute, and said so
+// to the owner's phones when it gets short, then once a day while it stays short. At critical, the caches
+// that only make things faster are cleared at once: losing them costs a download, and running out costs more.
+function watchDisk() {
+  const was = disk.level;
+  disk = readDisk(dataDir);
+  if (disk.level === was && (disk.level === 'ok' || Date.now() - toldAboutDisk < 24 * 3600_000)) return;
+  broadcast(snapshot());
+  if (disk.level === 'ok') return;
+  toldAboutDisk = Date.now();
+  // Not the phones shared in, which have no say over the disk.
+  const owner = state.pushTokens.filter((t) => !state.phones.some((p) => p.push?.includes(t)));
+  notifyAll(owner, 'disk', { id: '' });
+  if (disk.level === 'critical' && was !== 'critical') void cleanDisk(state.projects).then(watchDisk);
+}
+setInterval(watchDisk, 60_000).unref();
+watchDisk();
 
 // Look for a release now and once a day, so a Toto the relay never reaches still finds out.
 void checkForUpdate();

@@ -54,6 +54,9 @@ export function command(
 /** Runs to completion, feeding `input` to stdin; on failure throws the most telling line of its stderr. */
 export const sh = (file: string, args: string[], opts: { cwd?: string } = {}, input = '') => {
   const done = exec(file, args, { ...opts, timeout: 10 * 60_000 });
+  // A command that is over before it is given its input (or never reads any) makes this write fail with
+  // EPIPE, which, unheard, is an uncaught error that ends the whole server. Its own exit is the answer.
+  done.child.stdin?.on('error', () => {});
   done.child.stdin?.end(input);
   return done.catch((err) => {
     const lines = String(err.stderr || err.message).trim().split('\n');
@@ -64,6 +67,17 @@ export const run = (user: string | undefined, cwd: string, cmd: string, args: st
   const [file, argv, opts] = command(user, cwd, cmd, args);
   return sh(file, argv, opts, input);
 };
+
+// Everything an agent started carries TOTO_AGENT_ID in its environment (claude is run with it, and what it runs
+// inherits it), which is how its processes are told from the project's others without going by a name or a
+// number. An exact match on the whole line, so one agent's id is never mistaken for another's that begins with it.
+export const KILL_AGENT = `for p in /proc/[0-9]*; do tr '\\0' '\\n' < "$p/environ" 2>/dev/null | grep -qx "TOTO_AGENT_ID=$1" && kill -KILL "\${p#/proc/}" 2>/dev/null; done; true`;
+
+/** Ends an agent's processes, as the project's user: claude and whatever it is running. For a turn that will not stop when asked to. */
+export const killAgent = (user: string | undefined, cwd: string, agentId: string) => run(user, cwd, 'sh', ['-c', KILL_AGENT, 'sh', agentId]);
+
+/** Clears the packages apt has downloaded and kept, which are only a cache. */
+export const cleanApt = () => sh('sudo', ['-n', PRIV, 'clean-apt']);
 
 /** Why this machine's own display may not be showing Toto's screen: what its login did at this boot. */
 export const displayLog = async () => (await sh('sudo', ['-n', PRIV, 'display-log'])).stdout;

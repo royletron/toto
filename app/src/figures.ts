@@ -15,7 +15,7 @@ export function size(bytes: number) {
   const gb = bytes / 1024 ** 3;
   if (gb >= 100) return `${Math.round(gb)} GB`;
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return bytes > 0 && bytes < 1024 ** 2 ? 'under 1 MB' : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
 /** A length of time, as the two biggest units it has. */

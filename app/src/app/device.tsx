@@ -9,6 +9,7 @@ import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
 import { gutter } from '../theme';
+import { DiskPanel } from '../diskview';
 import { Health } from '../health';
 import { hasRawTerminals } from '../rawterminal';
 import { Transcript } from '../updating';
@@ -299,6 +300,14 @@ export default function Device() {
               <Section title="Health" about="How this Toto is doing now: its processor, memory and disk, and its temperature and power on a Raspberry Pi.">
                 <Health />
               </Section>
+              {atLeast(software?.version, 0, 10, 0) && (
+                <>
+                  <Rule />
+                  <Section title="Disk" about="What fills a Toto's card: each project's package caches and the agents' own copies of it. A full disk stops it answering, so it says when space is short.">
+                    <DiskPanel />
+                  </Section>
+                </>
+              )}
               <Rule />
             </>
           )}
