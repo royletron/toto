@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useConnection } from '../../connection';
@@ -10,10 +10,14 @@ import { Btn, Empty, Header, Reaching, Screen } from '../../ui';
 // A tab's id is picked here and the Toto makes the session when it is first opened. Not a secret, only unique.
 const newTab = () => (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).slice(0, 16);
 
-/** A project's terminals, a tab each. Opening the screen always lands in one: the newest, or a new one if there are none. */
+/**
+ * A project's terminals, a tab each. Opening the screen always lands in one: the newest, or a new one if there are none.
+ * Closing the last one, or ending it with `exit`, leaves the screen, and does not make another.
+ */
 export default function TerminalScreen() {
   const { id, tab } = useLocalSearchParams<{ id: string; tab?: string }>();
   const { projects, terminals, post, status, loaded, software } = useConnection();
+  const router = useRouter();
   const project = projects.find((p) => p.id === id);
   const online = status === 'open';
   const ids = terminals[id];
@@ -31,10 +35,23 @@ export default function TerminalScreen() {
     setMaking(tab);
     setChosen(tab);
   };
-  // None at all: one is made, so the screen always lands in a terminal.
-  if (ids && !ids.length && !making) open();
+  // Whether there has been a terminal here, in this visit: told apart from there never having been one.
+  const [had, setHad] = useState(false);
+  if (ids?.length && !had) setHad(true);
+  const gone = !!ids && !ids.length && !making;
+  // None at all on arriving: one is made, so the screen always lands in a terminal.
+  if (gone && !had) open();
   const tabs = ids && (making && !ids.includes(making) ? [...ids, making] : ids);
   const shown = chosen && tabs?.includes(chosen) ? chosen : tabs?.at(-1);
+
+  // The last one was closed or ended: nothing is left to show, so go back to the project.
+  useEffect(() => {
+    if (!gone || !had) return;
+    if (router.canGoBack()) router.back();
+    else router.replace({ pathname: '/project/[id]', params: { id } });
+    // `router` is stable enough; this is about the last terminal going.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gone, had]);
 
   useEffect(() => {
     if (online) post({ type: 'term_list', projectId: id });

@@ -100,13 +100,15 @@ export default function XTerm({ ref, onData, onSize }: Props) {
     void size.current(t.cols, t.rows);
     const watch = new ResizeObserver(() => fit.fit());
     watch.observe(host.current!);
-    t.focus();
+    // At a keyboard, typing starts at once. On a phone, taking focus would put the keyboard over the screen before it has been seen, so it waits to be tapped.
+    if (!touch) t.focus();
     return () => {
       watch.disconnect();
       t.dispose();
       term.current = undefined;
     };
-  }, []);
+    // Made once; `touch` is a fact about the device and does not change.
+  }, [touch]);
 
   useDOMImperativeHandle(
     ref as Ref<XTermHandle>,
