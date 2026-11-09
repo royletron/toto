@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { startServer } from './testserver.ts';
 
 // The Slurp plugin as it is installed, signed in to through the protocol, against a Worker that wants the right token.
@@ -21,6 +21,8 @@ const worker = createServer((req, res) => {
 }).listen(0, '127.0.0.1');
 await new Promise((r) => worker.once('listening', r));
 const address = `http://127.0.0.1:${(worker.address() as { port: number }).port}`;
+// Closed however the test ends: a listening server would otherwise keep a failed run from ever finishing.
+after(() => void worker.close());
 const { dial } = startServer({ TOTO_PLUGIN_DIR: plugins });
 
 test('signing in to Slurp takes the address and the token, checks them with the Worker, and is signed in only then', { timeout: 60_000 }, async () => {
@@ -51,5 +53,4 @@ test('signing in to Slurp takes the address and the token, checks them with the 
   for (let i = 0; i < 100 && later.said.findLast((m) => m.type === 'state')?.plugins.find((p: any) => p.name === 'slurp')?.signedIn !== undefined; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal(later.said.findLast((m) => m.type === 'state').plugins.find((p: any) => p.name === 'slurp').signedIn, undefined);
 
-  worker.close();
 });

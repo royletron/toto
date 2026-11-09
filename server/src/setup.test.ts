@@ -60,28 +60,45 @@ test('the SpaceVim setup puts it where Neovim looks, at a release, and leaves an
   assert.ok(!lstatSync(join(own, '.config', 'nvim')).isSymbolicLink());
 });
 
-test('the Slurp setup installs only a download that matches its checksum, says plainly when there is no build for the machine, and does nothing if the right one is there', () => {
+test('the Slurp setup installs only downloads that match their checksums, says plainly when there is no build for the machine, and does nothing more when the right ones are there', () => {
   const real = new URL('../../plugins/slurp/setup.sh', import.meta.url).pathname;
+  const file = (bin: string, name: string, body: string) => {
+    writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`);
+    chmodSync(join(bin, name), 0o755);
+  };
   /** Stand-ins for what it calls: a curl that "downloads" what it is given, and a uname that says what machine this is. */
   const tools = (machine: string, download: string) => {
     const bin = dir('bin');
-    const file = (name: string, body: string) => {
-      writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`);
-      chmodSync(join(bin, name), 0o755);
-    };
-    file('uname', `echo ${machine}`);
-    file('curl', `while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done; printf %s '${download}' > "$out"; echo "$@" >> "$HOME/curl.log"`);
+    file(bin, 'uname', `echo ${machine}`);
+    file(bin, 'curl', `while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done; printf %s '${download}' > "$out"; echo fetched >> "$HOME/curl.log"`);
     return bin;
   };
-  const run = (home: string, bin: string) => spawnSync('sh', [real], { env: { PATH: `${bin}:${process.env.PATH}`, HOME: home }, encoding: 'utf8' });
+  const run = (home: string, bin: string, env: Record<string, string> = {}) => spawnSync('sh', [real], { env: { PATH: `${bin}:${process.env.PATH}`, HOME: home, ...env }, encoding: 'utf8' });
+  /** A home that already has the right Slurp (a stand-in that logs what it is asked) and, if `duck`, the right DuckDB. */
+  const installed = (duck: boolean) => {
+    const home = dir('home');
+    mkdirSync(join(home, '.local', 'bin'), { recursive: true });
+    file(join(home, '.local', 'bin'), 'slurp', 'if [ "$1" = --version ]; then echo "slurp-cli 0.3.0"; else echo "$@" >> "$HOME/slurp.log"; env | grep -c "^SLURP_" >> "$HOME/slurp.env" || true; fi');
+    if (duck) {
+      mkdirSync(join(home, '.slurp', 'bin'), { recursive: true });
+      file(join(home, '.slurp', 'bin'), 'duckdb', 'echo "v2.0.0 (Cyanoptera) abc"');
+    }
+    return home;
+  };
 
-  // A download that is not the release it should be: refused, and nothing installed.
+  // A download that is not the release it should be: refused, and nothing installed or changed.
   const wrong = dir('home');
   const refused = run(wrong, tools('aarch64', 'not the release'));
   assert.notEqual(refused.status, 0);
   assert.match(refused.stderr, /not the release it should be/);
-  assert.ok(!existsSync(join(wrong, '.local', 'bin', 'slurp')), 'nothing was put in place');
-  assert.ok(!existsSync(join(wrong, '.bashrc')), 'and nothing else was changed');
+  assert.ok(!existsSync(join(wrong, '.local', 'bin', 'slurp')) && !existsSync(join(wrong, '.bashrc')), 'nothing was put in place');
+
+  // The same for DuckDB, when Slurp is there: nothing is put in place, and Slurp is not told it is.
+  const noDuck = installed(false);
+  const duckRefused = run(noDuck, tools('x86_64', 'not duckdb'));
+  assert.notEqual(duckRefused.status, 0);
+  assert.match(duckRefused.stderr, /not the release it should be/);
+  assert.ok(!existsSync(join(noDuck, '.slurp', 'bin', 'duckdb')) && !existsSync(join(noDuck, 'slurp.log')));
 
   // A machine it has no build for.
   const odd = dir('home');
@@ -90,11 +107,15 @@ test('the Slurp setup installs only a download that matches its checksum, says p
   assert.match(none.stderr, /no build of it for riscv64/);
   assert.ok(!existsSync(join(odd, 'curl.log')), 'it did not even try to download');
 
-  // The right one already there: it is left alone, and nothing is fetched.
-  const done = dir('home');
-  mkdirSync(join(done, '.local', 'bin'), { recursive: true });
-  writeFileSync(join(done, '.local', 'bin', 'slurp'), '#!/bin/sh\necho "slurp-cli 0.3.0"\n');
-  chmodSync(join(done, '.local', 'bin', 'slurp'), 0o755);
-  assert.equal(run(done, tools('x86_64', 'x')).status, 0);
+  // Both right already: nothing is fetched, and Slurp is told where DuckDB is and where to keep things, without the sign-in in its environment.
+  const done = installed(true);
+  assert.equal(run(done, tools('aarch64', 'x'), { SLURP_TOKEN: 'secret-admin-token', SLURP_BACKEND: 'https://example.invalid' }).status, 0);
   assert.ok(!existsSync(join(done, 'curl.log')), 'nothing was fetched');
+  const told = readFileSync(join(done, 'slurp.log'), 'utf8').trim();
+  assert.equal(told, `setup --library ${done}/.slurp/library --duckdb ${done}/.slurp/bin/duckdb --no-connect --no-open`);
+  assert.equal(readFileSync(join(done, 'slurp.env'), 'utf8').trim(), '0', 'no SLURP_ variable reached its setup');
+  assert.match(readFileSync(join(done, '.bashrc'), 'utf8'), /toto: slurp/);
+  // And a second time changes nothing more.
+  run(done, tools('aarch64', 'x'));
+  assert.equal(readFileSync(join(done, '.bashrc'), 'utf8').split('toto: slurp').length - 1, 1);
 });

@@ -1,10 +1,23 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after } from 'node:test';
 import { keysFromToken, session } from './secure.ts';
+
+// What signing in to a plugin puts in the environment (GH_TOKEN, CLOUDFLARE_API_TOKEN, SLURP_BACKEND and so on).
+// A person or an agent working on Toto may be signed in to some of them, and a test server must not
+// start out as though it were: it would be "signed in" to things it has not been, and tests that say otherwise would fail.
+const loginVariables = readdirSync(new URL('../../plugins/', import.meta.url).pathname, { withFileTypes: true }).flatMap((entry) => {
+  try {
+    const { login } = JSON.parse(readFileSync(new URL(`../../plugins/${entry.name}/manifest.json`, import.meta.url), 'utf8'));
+    return login ? [login.env, ...(login.paste?.also ?? []).map((f: { env: string }) => f.env)] : [];
+  } catch {
+    return [];
+  }
+});
+const cleanEnvironment = () => Object.fromEntries(Object.entries(process.env).filter(([name]) => !loginVariables.includes(name)));
 
 export type Line = { said: any[]; send: (m: object) => void; next: (type: string) => Promise<any>; ended: Promise<'refused' | 'closed'> };
 
@@ -15,7 +28,7 @@ export function startServer(env: Record<string, string> = {}, seed?: (dataDir: s
   // What was in the data directory before this version, put there before the server starts.
   seed?.(dataDir);
   const server = spawn(process.execPath, [new URL('./index.ts', import.meta.url).pathname], {
-    env: { ...process.env, TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: dataDir, TOTO_RELAY_URL: '',
+    env: { ...cleanEnvironment(), TOTO_PORT: String(port), TOTO_TOKEN: 'owner-token', TOTO_DATA_DIR: dataDir, TOTO_RELAY_URL: '',
       // Not the internet: a release or a plugin list arriving mid-test changes the state a test is waiting on.
       TOTO_RELEASES: 'http://127.0.0.1:9', TOTO_PLUGIN_INDEX: 'http://127.0.0.1:9/index.json', ...env },
     stdio: 'ignore',

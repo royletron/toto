@@ -1,7 +1,7 @@
 {
   "name": "slurp",
-  "version": "1.0.0",
-  "description": "Slurp, your own event store: sign in to your Worker once, and each project can set up its own events and send them. About 35 MB for each project.",
+  "version": "1.1.0",
+  "description": "Slurp, your own event store: sign in to your Worker once, and each project can set up its own events and send them. About 110 MB for each project.",
   "needs": "0.11.0",
   "apt": ["curl", "xz-utils", "ca-certificates"],
   "setup": "setup.sh",

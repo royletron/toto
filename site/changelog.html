@@ -32,6 +32,7 @@
     <p class="note">Toto 0.11.0, app 1.9.0</p>
     <ul>
       <li><b>A slurp plugin.</b> Sign in to your own <a href="https://slurp.run/docs/">Slurp</a> once, with your Worker's address and admin token, and every project's agents can set up events for their project (the project, and a publishable key for each place that sends them) and send events to it. The token reaches every project on that Worker, so use one you can revoke. The plugin's skill keeps agents to their own project, and to the publishable key in anything that ships. It installs Slurp's command line for each project, about 35 MB each, from a pinned release checked against its checksum. Needs Toto 0.11.0 and app 1.9.0.</li>
+      <li><b>Slurp reporting works</b> (plugin 1.1.0, from Plugins in the app, which then sets each project up again). Agents were stopped at reporting because Slurp wants DuckDB 2, which it will not fetch unless asked in person. The plugin now installs it for each project, checked against its checksum, so agents can sync a project's events, query them and build reports. That makes it about 110 MB for each project.</li>
       <li>A plugin's sign-in can now ask for more than a token, such as the address of a service you run, and can check them together.</li>
     </ul>
   </section>
