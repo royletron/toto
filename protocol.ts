@@ -102,7 +102,7 @@ export type Plugin = {
   login?: boolean;
   signedIn?: boolean;
   /** Its sign-in is making a token at `url` and pasting it back, with `plugin_token`, not a code shown here. */
-  paste?: { url: string; help: string };
+  paste?: { url: string; help: string; also?: { env: string; label: string }[] };
 };
 
 /**
@@ -327,7 +327,8 @@ export type ClientMessage =
   | { type: 'plugin_remove'; name: string }
   | { type: 'plugin_login'; name: string }
   // The other kind of sign-in: a token the person made for themselves. It is tried before it is kept.
-  | { type: 'plugin_token'; name: string; token: string }
+  // `also` holds what else its sign-in asks for beside the token (see `paste.also`), by the name of each.
+  | { type: 'plugin_token'; name: string; token: string; also?: Record<string, string> }
   | { type: 'plugin_logout'; name: string }
   | { type: 'check_update' }
   // Ask what is using the disk, by project. Answered with `disk_usage`; can take a while on a full card.

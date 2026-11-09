@@ -15,7 +15,7 @@ import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.t
 import { type Screen, adoptTerminal, isTerminalId, killTerminal, listTerminals, openTerminal, snapshotTerminal, streamTerminal, typing, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
-import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, setUpPlugins, startPluginLogin, useTokens } from './plugins.ts';
+import { cancelPluginLogin, checkAlso, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, setUpPlugins, startPluginLogin, useTokens } from './plugins.ts';
 import { apiToken, sameToken, startAgentApi } from './agentapi.ts';
 import { describeFlags, setFlag } from './flags.ts';
 import { openDb, transaction } from './db.ts';
@@ -1120,13 +1120,15 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'plugin_token': {
       const { login } = installedPlugin(ws, msg.name);
       if (!login?.paste) throw new Error('That plugin is not signed in to with a token.');
-      keepToken(login.env, await checkToken(login, msg.token));
+      const also = checkAlso(login, msg.also);
+      keepToken(login.env, await checkToken(login, msg.token, also));
+      for (const [name, value] of Object.entries(also)) keepToken(name, value);
       return refreshAgents();
     }
     case 'plugin_logout': {
       const { name, login } = installedPlugin(ws, msg.name);
       await cancelPluginLogin(name);
-      if (login) keepToken(login.env, undefined);
+      if (login) for (const name of [login.env, ...(login.paste?.also ?? []).map((f) => f.env)]) keepToken(name, undefined);
       return refreshAgents();
     }
     case 'disk_usage':

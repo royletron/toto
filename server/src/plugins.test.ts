@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -64,4 +65,43 @@ test('a plugin that needs a newer server than this one is not offered, and nothi
   assert.deepEqual(offerable(found, '0.9.0').map((m) => m.name), ['gh', 'spacevim']);
   assert.deepEqual(offerable(found, '0.10.0').map((m) => m.name), ['gh', 'spacevim'], 'ten is more than nine');
   assert.deepEqual(offerable('not a list', '1.0.0'), []);
+});
+
+test('a sign-in with a second value: each is checked for its shape, both reach the plugin\'s own check, and it counts as signed in only with both', async () => {
+  const { checkAlso, describe, loginNames } = await import('./plugins.ts');
+  const slurp = JSON.parse(readFileSync(new URL('../../plugins/slurp/manifest.json', import.meta.url), 'utf8'));
+  assert.deepEqual(checkAlso(slurp.login, { SLURP_BACKEND: ' https://events.example.workers.dev\n' }), { SLURP_BACKEND: 'https://events.example.workers.dev' });
+  for (const bad of [{}, { SLURP_BACKEND: '' }, { SLURP_BACKEND: 'http://events.example.workers.dev' }, { SLURP_BACKEND: 'https://a.example/path?x=1' }, { SLURP_BACKEND: 'events.example' }, { SLURP_BACKEND: 'https://x.example; reboot' }, { SLURP_BACKEND: 5 }, null, 'https://events.example.workers.dev']) assert.throws(() => checkAlso(slurp.login, bad), /address/, JSON.stringify(bad));
+  // A login with nothing extra has nothing to check.
+  assert.deepEqual(checkAlso({ env: 'GH_TOKEN' }, { anything: 'x' }), {});
+
+  // The plugin's check, run as it would be: the token only in the environment, against a server that wants the right one.
+  const seen: string[] = [];
+  const worker = createServer((req, res) => {
+    seen.push(`${req.method} ${req.url} ${req.headers.authorization}`);
+    res.writeHead(req.headers.authorization === 'Bearer goodtoken1234567890' ? 200 : 401).end('{}');
+  }).listen(0, '127.0.0.1');
+  await new Promise((r) => worker.once('listening', r));
+  try {
+    const address = `http://127.0.0.1:${(worker.address() as { port: number }).port}`;
+    assert.equal(await checkToken(slurp.login, ' goodtoken1234567890\n', { SLURP_BACKEND: address }), 'goodtoken1234567890');
+    assert.deepEqual(seen, ['POST /v1/rpc/Whoami Bearer goodtoken1234567890']);
+    await assert.rejects(checkToken(slurp.login, 'wrongtoken12345678', { SLURP_BACKEND: address }), /not accepted/);
+    // And an address nobody answers at is not accepted either.
+    await assert.rejects(checkToken(slurp.login, 'goodtoken1234567890', { SLURP_BACKEND: 'http://127.0.0.1:9' }), /not accepted/);
+  } finally {
+    worker.close();
+  }
+
+  // Signed in only when both are there; the names are what agents are given.
+  const have = [{ name: 'slurp', version: '1.0.0', ...slurp }];
+  const listed = (env: Record<string, string>) => describe(have, [], env).find((p) => p.name === 'slurp')!;
+  assert.equal(listed({ SLURP_TOKEN: 'x' }).signedIn, undefined);
+  assert.equal(listed({ SLURP_BACKEND: 'x' }).signedIn, undefined);
+  assert.equal(listed({ SLURP_TOKEN: 'x', SLURP_BACKEND: 'y' }).signedIn, true);
+  assert.deepEqual(listed({}).paste?.also, [{ env: 'SLURP_BACKEND', label: 'Address' }]);
+  const dir = mkdtempSync(join(tmpdir(), 'toto-pl-'));
+  mkdirSync(join(dir, 'slurp'));
+  writeFileSync(join(dir, 'slurp', 'manifest.json'), JSON.stringify(slurp));
+  assert.deepEqual(loginNames(dir), ['SLURP_TOKEN', 'SLURP_BACKEND']);
 });

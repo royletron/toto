@@ -45,10 +45,13 @@ const isPattern = (s) => {
  * `check` may then try. The token goes to agents in the environment variable `env`, which must end
  * like a secret's name.
  */
+// What a sign-in asks for beside its token, such as the address of a service the person runs: up to three, each
+// named for the plugin (see checkManifest), pasted in the app and kept with the token.
+const isAlso = (a) => Array.isArray(a) && a.length <= 3 && a.every((f) => /^[A-Z][A-Z0-9_]{0,40}$/.test(f?.env) && typeof f.label === 'string' && f.label.length > 0 && f.label.length <= 30 && isPattern(f.pattern));
 export const isLogin = (l) =>
   /^[A-Z][A-Z0-9_]{0,40}_(TOKEN|KEY)$/.test(l?.env) &&
   (l.paste
-    ? l.run === undefined && /^https:\/\/[\w./-]{1,150}$/.test(l.paste.url) && typeof l.paste.help === 'string' && l.paste.help.length <= 300 && isPattern(l.paste.pattern) && (l.paste.check === undefined || isArgv(l.paste.check))
+    ? l.run === undefined && /^https:\/\/[\w./-]{1,150}$/.test(l.paste.url) && typeof l.paste.help === 'string' && l.paste.help.length <= 300 && isPattern(l.paste.pattern) && (l.paste.check === undefined || isArgv(l.paste.check)) && (l.paste.also === undefined || isAlso(l.paste.also))
     : isArgv(l.run) && isArgv(l.token) && isPattern(l.url) && isPattern(l.code));
 
 /** Throws unless a manifest is for plugin `name` and asks only for what a plugin may ask for. */
@@ -60,6 +63,9 @@ export function checkManifest(m, name) {
   if (m.needs !== undefined && !/^\d+\.\d+\.\d+$/.test(m.needs)) throw new Error('The plugin says it needs a version that is not valid. Nothing was installed.');
   if (m.setup !== undefined && !isScript(m.setup)) throw new Error('The plugin has a setup script that is not valid. Nothing was installed.');
   if (m.login !== undefined && !isLogin(m.login)) throw new Error('The plugin has a sign-in that is not valid. Nothing was installed.');
+  // Anything else a sign-in sets goes in the environment of every agent, so it is named for the plugin, and cannot be PATH or the like.
+  const prefix = `${name.toUpperCase().replace(/-/g, '_')}_`;
+  if (m.login?.paste?.also?.some((f) => !f.env.startsWith(prefix) || f.env === m.login.env)) throw new Error(`The plugin has a sign-in that is not valid: what it asks for must be named ${prefix}... Nothing was installed.`);
 }
 
 /**

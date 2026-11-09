@@ -12,6 +12,8 @@ export default function PluginsScreen() {
   // The plugin whose token is being pasted, and what has been pasted so far.
   const [pasting, setPasting] = useState<string>();
   const [token, setToken] = useState('');
+  // What the sign-in asks for beside the token, such as the address of a service you run, by name.
+  const [extras, setExtras] = useState<Record<string, string>>({});
 
   // The page to sign in at opens by itself the moment its address arrives, once.
   const opened = useRef<string>(undefined);
@@ -40,6 +42,7 @@ export default function PluginsScreen() {
         style: 'destructive',
         onPress: () => {
           setToken('');
+          setExtras({});
           setPasting(undefined);
           request({ type: 'plugin_logout', name: p.name });
         },
@@ -80,9 +83,12 @@ export default function PluginsScreen() {
                   <>
                     <Txt tone="ghost" small>{p.paste.help}</Txt>
                     <Btn label="Open the page" onPress={() => Linking.openURL(p.paste!.url).catch(() => {})} />
+                    {p.paste.also?.map((f) => (
+                      <Field key={f.env} label={f.label.toLowerCase()} value={extras[f.env] ?? ''} onChangeText={(v) => setExtras((all) => ({ ...all, [f.env]: v }))} placeholder={`paste the ${f.label.toLowerCase()}`} keyboardType="url" />
+                    ))}
                     <Field label="token" value={token} onChangeText={setToken} placeholder="paste the token" secureTextEntry />
                     <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <Btn kind="primary" label={doing('plugin_token', p.name) ? 'Trying it…' : 'Save token'} onPress={() => request({ type: 'plugin_token', name: p.name, token })} busy={doing('plugin_token', p.name)} disabled={busy || !token.trim() || !online} style={{ flex: 1 }} />
+                      <Btn kind="primary" label={doing('plugin_token', p.name) ? 'Trying it…' : 'Save'} onPress={() => request({ type: 'plugin_token', name: p.name, token, ...(p.paste?.also?.length ? { also: extras } : null) })} busy={doing('plugin_token', p.name)} disabled={busy || !token.trim() || !!p.paste.also?.some((f) => !extras[f.env]?.trim()) || !online} style={{ flex: 1 }} />
                       <Btn label="Paste" onPress={async () => setToken((await Clipboard.getStringAsync().catch(() => '')).trim())} />
                     </View>
                     {doing('plugin_token', p.name) && <Txt tone="ghost" small>Your Toto is checking it with {p.name}. This can take a few seconds.</Txt>}

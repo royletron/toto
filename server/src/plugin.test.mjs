@@ -96,7 +96,7 @@ test('a plugin that lists npm packages has them installed, and says where it is 
 test('every plugin in the repository is one the installer accepts, with a skill named for it', () => {
   const dir = new URL('../../plugins/', import.meta.url).pathname;
   const names = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  assert.ok(['docker', 'gh', 'spacevim', 'wrangler'].every((n) => names.includes(n)));
+  assert.ok(['docker', 'gh', 'slurp', 'spacevim', 'wrangler'].every((n) => names.includes(n)));
   for (const name of names) {
     checkManifest(JSON.parse(readFileSync(`${dir}${name}/manifest.json`, 'utf8')), name);
     const skill = readFileSync(`${dir}${name}/skills/${name}/SKILL.md`, 'utf8');
@@ -127,4 +127,20 @@ test('a setup script that is not in the bundle stops the install, and one that i
   const b = target();
   await install('gh', withScript.tgz, withScript.sig, b.deps);
   assert.equal(readFileSync(join(b.dir, 'gh', 'setup.sh'), 'utf8'), 'echo hi\n');
+});
+
+test('a sign-in may ask for more than a token, but what it asks for must be named for the plugin, and shaped', () => {
+  const slurp = JSON.parse(readFileSync(new URL('../../plugins/slurp/manifest.json', import.meta.url), 'utf8'));
+  checkManifest(slurp, 'slurp');
+  const also = slurp.login.paste.also;
+  const withAlso = (extra) => ({ ...slurp, login: { ...slurp.login, paste: { ...slurp.login.paste, also: extra } } });
+  // Named for the plugin, so it cannot be PATH, LD_PRELOAD or another plugin's: it goes in every agent's environment.
+  for (const env of ['PATH', 'LD_PRELOAD', 'OTHER_BACKEND', 'SLURP', 'slurp_backend', 'SLURP_TOKEN']) assert.throws(() => checkManifest(withAlso([{ ...also[0], env }]), 'slurp'), /sign-in/, env);
+  assert.throws(() => checkManifest(withAlso([{ ...also[0], pattern: '(' }]), 'slurp'), /sign-in/);
+  assert.throws(() => checkManifest(withAlso([{ ...also[0], label: '' }]), 'slurp'), /sign-in/);
+  assert.throws(() => checkManifest(withAlso('SLURP_BACKEND'), 'slurp'), /sign-in/);
+  assert.throws(() => checkManifest(withAlso(Array(4).fill(also[0])), 'slurp'), /sign-in/);
+  checkManifest(withAlso([also[0], { env: 'SLURP_PROJECT', label: 'project', pattern: '^prj_[a-z0-9]+$' }]), 'slurp');
+  // The check keeps the token off the command line: it is read from the environment inside the shell, and given to curl on its input.
+  assert.ok(!slurp.login.paste.check.join(' ').includes('SLURP_TOKEN" ') || slurp.login.paste.check[2].includes("printf 'Authorization: Bearer %s"));
 });

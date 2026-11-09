@@ -1,0 +1,18 @@
+{
+  "name": "slurp",
+  "version": "1.0.0",
+  "description": "Slurp, your own event store: sign in to your Worker once, and each project can set up its own events and send them. About 35 MB for each project.",
+  "needs": "0.11.0",
+  "apt": ["curl", "xz-utils", "ca-certificates"],
+  "setup": "setup.sh",
+  "login": {
+    "env": "SLURP_TOKEN",
+    "paste": {
+      "url": "https://slurp.run/docs/",
+      "help": "Paste the address of your Slurp Worker (https://…workers.dev or your own domain) and its admin token, which you made when you set it up. The token lets agents here create projects and keys on your Worker, and it reaches every project's events there, so use one you can revoke.",
+      "pattern": "^[A-Za-z0-9._~+/=-]{16,200}$",
+      "also": [{ "env": "SLURP_BACKEND", "label": "Address", "pattern": "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$" }],
+      "check": ["sh", "-c", "printf 'Authorization: Bearer %s\\n' \"$SLURP_TOKEN\" | curl -fsS -m 20 -X POST -H @- -H 'content-type: application/json' -d '{}' \"${SLURP_BACKEND%/}/v1/rpc/Whoami\""]
+    }
+  }
+}

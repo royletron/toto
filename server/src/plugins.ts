@@ -17,7 +17,8 @@ const LISTED = process.env.TOTO_PLUGIN_INDEX ?? 'https://toto.royletron.dev/plug
 
 export const isPluginName = (n: unknown): n is string => typeof n === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(n);
 
-type Paste = { url: string; help: string; pattern: string; check?: string[] };
+type Also = { env: string; label: string; pattern: string };
+type Paste = { url: string; help: string; pattern: string; check?: string[]; also?: Also[] };
 type DeviceLogin = { run: string[]; url: string; code: string; token: string[] };
 type Login = { env: string; paste?: Paste } & Partial<DeviceLogin>;
 /** `needs` is the oldest server that can use the plugin, for one that depends on something added to the server since. */
@@ -72,8 +73,8 @@ export function describe(have: Manifest[], offered: Manifest[], env: Record<stri
       ...(mine ? { version: mine.version } : null),
       ...(mine && theirs && newer(theirs.version, mine.version) ? { latest: theirs.version } : null),
       ...(login ? { login: true } : null),
-      ...(mine?.login?.paste ? { paste: { url: mine.login.paste.url, help: mine.login.paste.help } } : null),
-      ...(mine?.login && env[mine.login.env] ? { signedIn: true } : null),
+      ...(mine?.login?.paste ? { paste: { url: mine.login.paste.url, help: mine.login.paste.help, ...(mine.login.paste.also?.length ? { also: mine.login.paste.also.map(({ env, label }) => ({ env, label })) } : null) } } : null),
+      ...(mine?.login && [mine.login.env, ...(mine.login.paste?.also ?? []).map((f) => f.env)].every((name) => env[name]) ? { signedIn: true } : null),
     };
   });
 }
@@ -86,7 +87,7 @@ const tokenFile = join(dataDir, 'plugin-tokens.json');
 const tokens = (): Record<string, string> => (existsSync(tokenFile) ? JSON.parse(readFileSync(tokenFile, 'utf8')) : {});
 
 /** The names of the variables plugins' sign-ins fill in, for agents to be given. */
-export const loginNames = (dir = DIR) => installed(dir).flatMap((m) => (m.login ? [m.login.env] : []));
+export const loginNames = (dir = DIR) => installed(dir).flatMap((m) => (m.login ? [m.login.env, ...(m.login.paste?.also ?? []).map((f) => f.env)] : []));
 
 /** Puts every saved sign-in back in the environment. */
 export function useTokens() {
@@ -103,8 +104,20 @@ export function keepToken(name: string, value: string | undefined) {
   else process.env[name] = value;
 }
 
-/** Whether a token the person pasted is of the right shape and, if the plugin can tell, works. Throws why not. */
-export async function checkToken(login: Login, token: unknown): Promise<string> {
+/** What a sign-in asked for beside its token, as the person gave it, each checked against its shape. Throws which one is wrong. */
+export function checkAlso(login: Login, given: unknown): Record<string, string> {
+  const said = given && typeof given === 'object' ? (given as Record<string, unknown>) : {};
+  return Object.fromEntries(
+    (login.paste?.also ?? []).map(({ env, label, pattern }) => {
+      const value = typeof said[env] === 'string' ? (said[env] as string).trim() : '';
+      if (!value || value.length > 300 || !new RegExp(pattern).test(value)) throw new Error(`That does not look like the ${label.toLowerCase()}. Copy all of it, and nothing else.`);
+      return [env, value];
+    }),
+  );
+}
+
+/** Whether a token the person pasted is of the right shape and, if the plugin can tell, works. Throws why not. `also` is what else it asked for. */
+export async function checkToken(login: Login, token: unknown, also: Record<string, string> = {}): Promise<string> {
   const paste = login.paste;
   const value = typeof token === 'string' ? token.trim() : '';
   if (!paste || value.length > 500 || !new RegExp(paste.pattern).test(value)) throw new Error('That does not look like the token. Copy all of it from the page, and nothing else.');
@@ -112,7 +125,7 @@ export async function checkToken(login: Login, token: unknown): Promise<string> 
     const home = mkdtempSync(join(tmpdir(), 'toto-login-'));
     const [file, ...args] = paste.check;
     // The token reaches the command in its environment only, never on its command line.
-    const worked = await exec(file, args, { env: { ...process.env, HOME: home, [login.env]: value }, timeout: 30_000 }).then(() => true, () => false);
+    const worked = await exec(file, args, { env: { ...process.env, HOME: home, ...also, [login.env]: value }, timeout: 30_000 }).then(() => true, () => false);
     rmSync(home, { recursive: true, force: true });
     if (!worked) throw new Error('That token was not accepted. Check it was copied whole, and has the permissions it needs.');
   }
