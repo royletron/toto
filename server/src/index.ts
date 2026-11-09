@@ -21,6 +21,7 @@ import { describeFlags, setFlag } from './flags.ts';
 import { openDb, transaction } from './db.ts';
 import { importLegacy } from './legacy.ts';
 import { openMemories } from './memory.ts';
+import { openTalk } from './talk.ts';
 import { openTasks } from './tasks.ts';
 import { readLog, readProgress } from './progress.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
@@ -104,6 +105,7 @@ const db = openDb(join(dataDir, 'toto.db'));
 importLegacy(db, dataDir);
 const memories = openMemories(db);
 const tasks = openTasks(db, join(dataDir, 'task-files'));
+const talk = openTalk(db);
 const API_PORT = Number(process.env.TOTO_API_PORT ?? 7861);
 const apiUrl = `http://127.0.0.1:${API_PORT}`;
 /** What a project's agents are given to call this device with. */
@@ -226,6 +228,7 @@ const snapshot = (): ServerMessage => ({
   identity: state.identity,
   sshKey,
   ...(disk.level !== 'ok' ? { lowDisk: disk } : null),
+  ...(talk.links().length ? { links: talk.links() } : null),
   version,
   latest: latest === version ? undefined : latest,
   updating,
@@ -257,7 +260,7 @@ function view(phone: PhoneRecord | undefined, m: ServerMessage): ServerMessage |
   const agentSeen = (id: string | undefined) => sees(phone, projectOfAgent(id));
   switch (m.type) {
     case 'state':
-      return { ...m, projects: m.projects.filter((p) => sees(phone, p.id)), agents: m.agents.filter((a) => sees(phone, a.projectId)) };
+      return { ...m, projects: m.projects.filter((p) => sees(phone, p.id)), agents: m.agents.filter((a) => sees(phone, a.projectId)), ...(m.links?.some((l) => agentSeen(l.a) && agentSeen(l.b)) ? { links: m.links.filter((l) => agentSeen(l.a) && agentSeen(l.b)) } : { links: undefined }) };
     case 'event':
     case 'history':
     case 'older':
@@ -421,16 +424,29 @@ const delta = (agent: AgentRecord, text: string) => {
 
 // What people have asked to say to an agent once its turn ends. ponytail: kept in memory, so a
 // restart of the server forgets it; write it beside the conversation if that proves to matter.
-const queues = new Map<string, { text: string; images: ImageRef[] }[]>();
+const queues = new Map<string, { text: string; images: ImageRef[]; from?: { agentId: string; name: string } }[]>();
 const MAX_QUEUED = 10;
 // Agents whose turn is being stopped. The turn they end is not followed by what was waiting, nor a "done" notification.
 const stopping = new Set<string>();
 const tellQueue = (agentId: string) =>
   broadcast({ type: 'queue', agentId, items: (queues.get(agentId) ?? []).map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
 
+/** One agent says something to another: at once if it is idle, and when its turn ends if it is not. Throws a sentence for the sender if it cannot. */
+function tellAgent(toId: string, fromId: string, text: string) {
+  const [target, sender] = [state.agents.find((a) => a.id === toId), state.agents.find((a) => a.id === fromId)];
+  if (!target || target.harness !== 'claude' || !sender) throw new Error('That agent is not there any more.');
+  needSpace();
+  const from = { agentId: sender.id, name: sender.name };
+  if (!thinking.has(target.id)) return deliver(target, text, [], from);
+  const waiting = queues.get(target.id) ?? [];
+  if (waiting.length >= MAX_QUEUED) throw new Error(`${target.name} has as many messages waiting as can wait. Try again later.`);
+  queues.set(target.id, [...waiting, { text, images: [], from }]);
+  tellQueue(target.id);
+}
+
 /** Says something to an agent now: shows it in the conversation, and gives it to the agent. */
-function deliver(agent: AgentRecord, text: string, pictures: { ref: ImageRef; mime: string; data: string }[]) {
-  emit(agent, { type: 'user', text, ...(pictures.length ? { images: pictures.map((p) => p.ref) } : null) });
+function deliver(agent: AgentRecord, text: string, pictures: { ref: ImageRef; mime: string; data: string }[], from?: { agentId: string; name: string }) {
+  emit(agent, { type: 'user', text, ...(from ? { from } : null), ...(pictures.length ? { images: pictures.map((p) => p.ref) } : null) });
   thinking.add(agent.id);
   stopping.delete(agent.id); // a stop that came too late for the last turn is not for this one
   (running.get(agent.id) ?? start(agent)).send(text, pictures);
@@ -448,7 +464,7 @@ function sayNext(agent: AgentRecord) {
   const next = queues.get(agent.id)?.shift();
   if (!next) return false;
   tellQueue(agent.id);
-  deliver(agent, next.text, picturesOf(agent, next.images));
+  deliver(agent, next.text, picturesOf(agent, next.images), next.from);
   return true;
 }
 
@@ -624,6 +640,7 @@ async function joinStream(ws: Client, project: ProjectRecord, id: string, cols: 
 
 /** Stops an agent and forgets it. The caller removes it from `state.agents`. */
 const forget = (agent: AgentRecord) => {
+  talk.dropAgent(agent.id);
   running.get(agent.id)?.stop();
   clearTimeout(deltas.get(agent.id)?.timer);
   deltas.delete(agent.id);
@@ -991,7 +1008,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       const [next] = agent && waiting && Number.isInteger(msg.index) && waiting[msg.index] ? waiting.splice(msg.index, 1) : [];
       if (!agent || !next) return;
       tellQueue(agent.id);
-      return deliver(agent, next.text, picturesOf(agent, next.images));
+      return deliver(agent, next.text, picturesOf(agent, next.images), next.from);
     }
     case 'unqueue': {
       const waiting = queues.get(msg.agentId);
@@ -1112,6 +1129,13 @@ async function handle(msg: ClientMessage, ws: Client) {
       const pushed = tasks.update(task.id, { title: task.title, description: task.description, projectId: worker.projectId, agentId: worker.id, state: 'working' });
       tellTasks();
       return giveTask(worker, pushed);
+    }
+    case 'set_link': {
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can connect agents.');
+      const [x, y] = [state.agents.find((a) => a.id === msg.a), state.agents.find((a) => a.id === msg.b)];
+      if (!x || !y) throw new Error('One of those agents is not there any more.');
+      talk.setLink(x.id, y.id, msg.level);
+      return broadcast(snapshot());
     }
     case 'set_flag':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can change its settings.');
@@ -1501,6 +1525,12 @@ void startAgentApi(API_PORT, {
     }));
   },
   changed: (what) => (what === 'memories' ? tellMemories() : tellTasks()),
+  talk,
+  agent: (id) => {
+    const found = state.agents.find((a) => a.id === id);
+    return found && { id: found.id, name: found.name, projectId: found.projectId, project: state.projects.find((p) => p.id === found.projectId)?.name ?? '', working: thinking.has(found.id) };
+  },
+  tell: (toId, fromId, text) => tellAgent(toId, fromId, text),
 });
 // An update that was under way when this server started is still going.
 if (readProgress().active) {

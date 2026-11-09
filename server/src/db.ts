@@ -55,6 +55,27 @@ export const MIGRATIONS: string[] = [
    );
    CREATE INDEX task_tags_tag ON task_tags (tag);
    CREATE TABLE tag_colors (tag TEXT PRIMARY KEY, color TEXT NOT NULL);`,
+  // Which agents may talk to each other (a pair, once, with the lesser id first), and what they have asked of one another.
+  `CREATE TABLE agent_links (
+     a TEXT NOT NULL,
+     b TEXT NOT NULL,
+     level TEXT NOT NULL,
+     created INTEGER NOT NULL,
+     PRIMARY KEY (a, b)
+   );
+   CREATE TABLE agent_requests (
+     id TEXT PRIMARY KEY,
+     from_agent TEXT NOT NULL,
+     to_agent TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     text TEXT NOT NULL,
+     task_id TEXT,
+     state TEXT NOT NULL,
+     created INTEGER NOT NULL,
+     answered INTEGER
+   );
+   CREATE INDEX agent_requests_to ON agent_requests (to_agent, state);
+   CREATE INDEX agent_requests_from ON agent_requests (from_agent, created);`,
 ];
 
 /** Runs `work` as one change that happens whole or not at all. Inside another, it is part of it. */

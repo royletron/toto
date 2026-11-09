@@ -16,7 +16,7 @@ test('a new database is brought to the current layout, private to the server, an
   const file = join(dir(), 'toto.db');
   const db = openDb(file);
   assert.equal(version(db), MIGRATIONS.length);
-  assert.deepEqual(tables(db), ['memories', 'tag_colors', 'task_files', 'task_tags', 'tasks']);
+  assert.deepEqual(tables(db), ['agent_links', 'agent_requests', 'memories', 'tag_colors', 'task_files', 'task_tags', 'tasks']);
   assert.equal(statSync(file).mode & 0o777, 0o600);
   assert.equal((db.prepare('PRAGMA journal_mode').get() as { journal_mode: string }).journal_mode, 'wal');
   db.prepare("INSERT INTO tag_colors (tag, color) VALUES ('a', '#112233')").run();

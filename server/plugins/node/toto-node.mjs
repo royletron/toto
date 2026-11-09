@@ -35,6 +35,22 @@ export const TOOLS = [
   },
   { name: 'list_tasks', description: 'The tasks still open in this project, with their ids.', inputSchema: { type: 'object', properties: {} } },
   { name: 'done_task', description: 'Mark a task of this project done, once the work on it is finished.', inputSchema: { type: 'object', required: ['id'], properties: { id: str('The task id.') } } },
+  { name: 'list_agents', description: 'The other agents the person has connected you to, with their ids, their projects, whether each is busy, and what you may do with each: ask questions, or also ask for work. Empty unless the person has connected you.', inputSchema: { type: 'object', properties: {} } },
+  {
+    name: 'ask_agent',
+    description: 'Ask a connected agent a question about its project: how something works, where something is, what it needs from you. It answers later, and the answer arrives here as a message, so do not wait for it. Be specific and give the context they need, since they cannot see your project. Never send a secret.',
+    inputSchema: { type: 'object', required: ['agent', 'question'], properties: { agent: str('Its name or id, from list_agents.'), question: str('What you want to know, with the context needed to answer it.') } },
+  },
+  {
+    name: 'request_work',
+    description: 'Ask a connected agent to implement something in its project, when the person has allowed you to (list_agents says). It becomes a task on their project\'s list, which the person can see. Say what is wanted and why, and how you will use it. You are told when they finish it, or if they cannot.',
+    inputSchema: { type: 'object', required: ['agent', 'title'], properties: { agent: str('Its name or id, from list_agents.'), title: str('A short title.'), description: str('What and why, with whatever they need to do it. They cannot see your project.') } },
+  },
+  {
+    name: 'reply_to_agent',
+    description: 'Answer a request another agent made of you, by its id (given in the message you were sent). Use it to answer a question, or to say you cannot do work you were asked for, or need to know something first.',
+    inputSchema: { type: 'object', required: ['request', 'answer'], properties: { request: str('The request id, such as req_1a2b3c4d.'), answer: str('Your answer.') } },
+  },
   {
     name: 'get_task_file',
     description: 'Save a file attached to a task into this project, so you can read it. Gives the path it was saved to.',
@@ -59,7 +75,7 @@ export async function run(name, args, cwd = process.cwd()) {
     const file = await api('task_file', { task: args?.task, file: args?.file });
     return `Saved to ${save(file.name, file.base64, args?.to, cwd)}.`;
   }
-  const routes = { recall: 'recall', remember: 'remember', forget: 'forget', raise_task: 'raise_task', update_task: 'update_task', list_tasks: 'list_tasks', done_task: 'done_task' };
+  const routes = { recall: 'recall', remember: 'remember', forget: 'forget', raise_task: 'raise_task', update_task: 'update_task', list_tasks: 'list_tasks', done_task: 'done_task', list_agents: 'list_agents', ask_agent: 'ask_agent', request_work: 'request_work', reply_to_agent: 'reply_to_agent' };
   if (!routes[name]) throw new Error('There is no such tool.');
   return (await api(routes[name], args ?? {})).text;
 }

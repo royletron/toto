@@ -16,7 +16,8 @@ export type FileRef = { id: string; name: string; mime: string; bytes: number };
 // that started it (`Agent`, once called `Task`). Without it, the event is the agent's own.
 export type AgentEvent =
   // `images`: pictures the person sent along with what they said.
-  | { type: 'user'; text: string; images?: ImageRef[] }
+  // `from`: another agent said it (see `AgentLink`), not the person.
+  | { type: 'user'; text: string; images?: ImageRef[]; from?: { agentId: string; name: string } }
   | { type: 'text'; text: string; parent?: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown; parent?: string }
   // `images`: pictures the tool returned, such as a screenshot. `files`: files the agent sent.
@@ -188,6 +189,8 @@ export type ServerMessage =
       sshKey?: string;
       // Present only while the disk is short of space, which is when the app should say so.
       lowDisk?: Disk;
+      // Which agents may talk to each other.
+      links?: AgentLink[];
       /** The version of Toto this device runs; `latest` is set when a newer one has been released. */
       version: string;
       latest?: string;
@@ -340,6 +343,8 @@ export type ClientMessage =
   | { type: 'reboot' }
   // Clear what is only a cache, in every project and the system's downloaded packages. Answered with `disk_usage`.
   | { type: 'clean_disk' }
+  // Let two agents talk to each other (`ask`, or `ask` and `work`), or stop them (`none`). Only the owner's phone.
+  | { type: 'set_link'; a: string; b: string; level: 'none' | 'ask' | 'work' }
   // Ask how the device is doing: its processor, memory, disk and so on. Answered with `stats`, as often as asked.
   | { type: 'stats' }
   // Ask why this device's own screen is not showing Toto's screen. Answered with `display_log`.
@@ -397,6 +402,9 @@ export type ClientMessage =
   | { type: 'term_kill'; projectId: string; terminalId: string }
   // Types `text`, then presses `key`, into a terminal this client has open. Sent per keystroke.
   | { type: 'term_input'; terminalId: string; text?: string; key?: TermKey };
+
+/** Two agents the person has allowed to talk to each other: `ask` lets them ask each other questions, `work` also lets them ask each other to do something. */
+export type AgentLink = { a: string; b: string; level: 'ask' | 'work' };
 
 /** How full the disk a Toto keeps its projects on is. `level` is how short of space it is. */
 export type Disk = { total: number; free: number; level: 'ok' | 'low' | 'critical' };

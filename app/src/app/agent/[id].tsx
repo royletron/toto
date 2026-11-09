@@ -8,6 +8,7 @@ import { Markdown } from '../../markdown';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
 import { ProjectTabs, useTabs } from '../../tabs';
+import { atLeast } from '../../version';
 import { Avatar } from '../../avatar';
 import { Files } from '../../files';
 import { Attachments, Pictures, choosePictures, type Attached } from '../../pictures';
@@ -16,7 +17,8 @@ import { Btn, Empty, Header, Loading, Reaching, Screen, Spinner, Txt, Waiting, s
 const NO_EVENTS: AgentEvent[] = [];
 
 type Row =
-  | { kind: 'user' | 'text' | 'error' | 'note'; text: string; images?: ImageRef[]; at: number }
+  // `from`: the name of the agent that said it, when it was another agent and not the person.
+  | { kind: 'user' | 'text' | 'error' | 'note'; text: string; images?: ImageRef[]; from?: string; at: number }
   | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }; decision?: 'waiting' | boolean; children: Row[] };
 type ToolItem = Extract<Row, { kind: 'tool' }>;
 
@@ -43,7 +45,7 @@ function toRows(events: AgentEvent[], mode?: Mode, first = 0): Row[] {
   // `at` is each row's place in the history, which stays the same when earlier messages are put in front.
   for (const [i, e] of events.entries()) {
     const at = first + i;
-    if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images, at });
+    if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images, from: e.from?.name, at });
     else if (e.type === 'text') listFor(e.parent).push({ kind: 'text', text: e.text, at });
     else if (e.type === 'tool_call') tool(e.id, e.name, e.input, e.parent);
     else if (e.type === 'approval_request') {
@@ -385,8 +387,10 @@ function Chat({ agentId }: { agentId: string }) {
             <ToolRow row={item} agentId={agentId} online={online} deciding={!!deciding[item.id]} onDecide={decide(item.id)} />
           ) : item.kind === 'user' ? (
             <View style={local.user}>
-              <Txt tone="amber" weight="bold">❯</Txt>
+              {/* Another agent is not you: its own mark and colour, since amber is what is yours. */}
+              <Txt tone={item.from ? 'sky' : 'amber'} weight="bold">{item.from ? '⇄' : '❯'}</Txt>
               <View style={{ flex: 1, gap: 8 }}>
+                {!!item.from && <Txt tone="sky" small weight="bold">{`from ${item.from}`}</Txt>}
                 {!!item.text && <Txt weight="medium" selectable>{item.text}</Txt>}
                 {!!item.images?.length && <Pictures agentId={agentId} images={item.images} />}
               </View>
@@ -494,8 +498,12 @@ function Chat({ agentId }: { agentId: string }) {
 
 export default function AgentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { agents, projects, post, loaded } = useConnection();
+  const { agents, projects, post, loaded, links, software } = useConnection();
   const router = useRouter();
+  // How many agents this one may talk to.
+  const connections = links.filter((l) => l.a === id || l.b === id).length;
+  // Only a Toto that can do it (0.12.0), and the demo, which pretends to.
+  const canConnect = atLeast(software?.version, 0, 12) || software?.version === 'demo';
   const agent = agents.find((a) => a.id === id);
   const project = projects.find((p) => p.id === agent?.projectId);
   const auto = agent?.mode === 'auto';
@@ -552,6 +560,7 @@ export default function AgentScreen() {
                 <Txt tone={auto ? 'amber' : 'ghost'} weight={auto ? 'bold' : 'regular'}>{auto ? 'auto' : 'asks'}</Txt>
               </Pressable>
             )}
+            {agent && canConnect && <Btn label={`⇄${connections ? ` ${connections}` : ''}`} onPress={() => router.push({ pathname: '/links/[id]', params: { id } })} spoken={connections ? `Connected to ${connections} other ${connections === 1 ? 'agent' : 'agents'}` : 'Connect to other agents'} style={small} />}
             <Btn label="···" onPress={more} spoken="More actions" style={small} />
           </>
         }

@@ -90,8 +90,10 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     const turn = turns[agentId];
     later(ms, () => turn === turns[agentId] && what());
   };
+  // Which agents may talk to each other, as the person has set it.
+  let links: { a: string; b: string; level: 'ask' | 'work' }[] = [];
   const state = (): ServerMessage => ({
-    type: 'state', name, claude: 'subscription', projects, agents, identity: { name: 'Demo', email: 'demo@example.com' },
+    type: 'state', name, claude: 'subscription', projects, agents, ...(links.length ? { links } : null), identity: { name: 'Demo', email: 'demo@example.com' },
     version: 'demo', updating: false, phones: [], owner: true,
     flags: [{ name: 'debugStream', label: 'Keep subagent messages', about: 'Saves the messages Claude sends about subagents to a private file on this Toto, to see what is really in them. Shortened, with no pictures.', on: flagOn }],
     plugins: [{ name: 'gh', description: 'GitHub’s command line, for agents: pull requests, issues and checks.', login: true }],
@@ -127,6 +129,10 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
         return say(state());
       case 'set_lan':
         projects = projects.map((p) => (p.id === msg.projectId ? { ...p, lan: msg.allow } : p));
+        return say(state());
+      case 'set_link':
+        links = links.filter((l) => !((l.a === msg.a && l.b === msg.b) || (l.a === msg.b && l.b === msg.a)));
+        if (msg.level !== 'none') links = [...links, { a: msg.a, b: msg.b, level: msg.level }];
         return say(state());
       case 'create_agent':
         return void later(900, () => {

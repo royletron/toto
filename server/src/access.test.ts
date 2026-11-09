@@ -66,6 +66,14 @@ test('a phone shared in sees only its projects, and a paused one changes nothing
   assert.match((await kid.next('failed')).message, /not shared with this phone/);
   kid.send({ type: 'older', agentId: inMine, before: 5 });
   assert.equal((await kid.next('older')).agentId, inMine);
+  // Connecting agents is for the phone that owns the Toto, and a link to an agent this phone cannot see is not shown to it.
+  kid.send({ type: 'set_link', a: inMine, b: inTheirs, level: 'ask' });
+  assert.match((await kid.next('failed')).message, /every project|set this Toto up/);
+  owner.send({ type: 'set_link', a: inMine, b: inTheirs, level: 'ask' });
+  await latest(owner, 'state', (s) => s.links?.length === 1);
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(kid.said.findLast((m) => m.type === 'state').links, undefined, 'it is told nothing of a link to the other project');
+  owner.send({ type: 'set_link', a: inMine, b: inTheirs, level: 'none' });
   // How the machine is doing is the owner's to see.
   kid.send({ type: 'stats' });
   assert.match((await kid.next('failed')).message, /every project/);
